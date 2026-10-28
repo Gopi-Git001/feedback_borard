@@ -8,6 +8,7 @@ As an admin, I want to delete a post, so that I can remove spam, duplicates or o
 3. Given post P belongs to organization "Beta", When the admin of "Acme" tries to delete P, Then the response is 404 and P still exists.
 4. Given post P was already deleted (or never existed), When the admin requests deletion again, Then the response is 404 and nothing else changes.
 5. Given I am not logged in, When I try to delete a post, Then the response is 401 and the post still exists.
+6. Given I am the admin of "Acme", post P has 2 comments and 3 votes, and the delete confirmation dialog is open, When I click "Cancel" (ASSUMED button text), Then the dialog closes and P, its comments and its votes remain unchanged.
 
 ## Business rules
 - Only admins delete posts (brief role table); members cannot delete posts, including their own (brief ASSUMED).
@@ -16,7 +17,7 @@ As an admin, I want to delete a post, so that I can remove spam, duplicates or o
 - Admin may only delete posts of their own organization.
 
 ## UI notes
-- Admin-only "Delete" control on the post page; clicking it asks for confirmation (ASSUMED text: "Delete this post?" with Delete / Cancel). Cancel leaves the post unchanged. (Confirmation step is a UI safeguard; see handoff Open questions.)
+- Admin-only "Delete" control on the post page; clicking it asks for confirmation (ASSUMED text: "Delete this post?" with Delete / Cancel). Cancel closes the dialog and leaves the post unchanged (criterion 6). (Confirmation step is a UI safeguard; see handoff Open questions.)
 
 ## Data touched
 - Post (removed), Comment (removed with post), Vote (removed with post).
@@ -28,4 +29,5 @@ Deleting comments, restoring deleted posts, bulk delete, soft delete / audit tra
 - ASSUMED: hard delete with cascade of comments and votes; confirmation dialog before delete (texts "Delete this post?", "Delete", "Cancel" are ASSUMED).
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
-- API contract (TASK-001) did not exist yet. The TASK-002 spec names 403 (member on admin action) and 404 (cross-organization access); stories use no other HTTP code. ASSUMED: 401 for a missing or invalid login token (standard meaning; named in neither TASK-002 nor the brief). Recheck all codes against the contract when it lands.
+- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Recheck once the contract is merged to main.
+- Contract check (TASK-039): api-contract.yaml (branch feature/TASK-001-stack-and-contracts, not yet on main) now exists. It confirms hard delete with cascade, 403 for a member and 404 for another organization's post (checked before the role). The contract lists 401 without login but itself marks it ASSUMED, so criterion 5 stays ASSUMED. The confirmation dialog and its Cancel button are UI-only and not in the contract. Recheck once it is merged to main.
