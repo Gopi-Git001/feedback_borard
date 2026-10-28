@@ -20,7 +20,7 @@ info:
       403 forbidden (wrong role; or no organization yet, **ASSUMED**, see below), 404 not found (including
       other-organization resources), 409 conflict, 429 rate limited (approved per Orchestrator message 2026-10-27, relayed from the human).
       FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`; no operation returns 422.
-    - **Order of checks (one rule, ADR-004 section 3):** 429 (rate limiter), 415 (`Content-Type`), 401 (authentication), 400 (body shape), 404 (lookup), 409 (conflict). Each endpoint uses the subset that applies to it, in this order (only `POST /invites/accept` has all six). For the protected endpoints: authentication (401), then resource lookup scoped to the caller's organization
+    - **Order of checks (one rule, ADR-004 section 3):** 429 (rate limiter), 415 (`Content-Type`), 401 (authentication), 400 (body shape), 404 (lookup), 409 (conflict). Each endpoint uses the subset that applies to it, in this order (only `POST /invites/accept` has all six). **Limiters keyed on the user (Attempt 9, architect decision, ASSUMED, not approved by Gopi):** a limiter keyed on the client IP runs first, before 415, as above. A limiter keyed on the authenticated user id needs the caller's identity, so it can only run **after** 415 and 401 and **before** the 400 and 409 checks: 415 (`Content-Type`), 401 (authentication), 429 (per-user limiter), 400, then 409. The only user-keyed limiter in the contract is the per-user limit of `POST /organizations` (`RATE_LIMIT_ORG_CREATE_PER_USER`, 10 per 60 s); `POST /organizations` has **no per-IP limiter**, so it has only this one, and its order is 415, 401, 429, 400, 409. No other endpoint has a user-keyed limiter (the 10-active-sessions cap is not a limiter and sends no 429; the follow-up write limit of R5 is not in the contract); a future user-keyed limiter follows the same order. Consequences: an unauthenticated request with a wrong `Content-Type` gets 415 (no identity is needed); an unauthenticated request with a good `Content-Type` gets 401 and uses up no user's bucket; the per-user bucket counts every authenticated request that passed 415 and 401, whatever the later 400 or 409 answer is; a request that is answered 415 or 401 is never counted. For the protected endpoints: authentication (401), then resource lookup scoped to the caller's organization
       (404, including "exists in another organization"), then role (403). A member who targets an admin-only
       operation on a post of another organization gets 404, not 403, so existence is never revealed.
     - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). The same applies to `display_name` at signup: **trim leading and trailing whitespace first, then validate the length (1-80)**; the trimmed value is stored. `email` is compared case-insensitively. **The `minLength`/`maxLength` values in the schemas below describe the trimmed value**: the server validates lengths after trimming, so a client or generated validator must not reject the raw input on those keywords alone (for example `"  Ana  "` is valid).
@@ -55,8 +55,8 @@ info:
       quota; accepted risk R10, ADR-004), then the CSRF guard (`X-Requested-With` and `Origin`, 403), then the cookie logic.
       `/auth/logout` has no rate limit: CSRF guard, then the logout logic.
     - **Content-Type and `Vary` (ADR-004, security-bot N13):** a request with a body must send `Content-Type: application/json`, otherwise
-      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413). It is checked after the rate limiter and before authentication.
-      The responses of `/auth/refresh` and `/auth/logout` send `Vary: Origin`.
+      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413). It is checked after any IP-keyed rate limiter and before authentication (the per-user limiter of `POST /organizations` runs after it). Only the media type is compared: the part before the first semicolon, trimmed, case-insensitive; parameters are ignored, so `application/json`, `application/json; charset=utf-8` and `Application/JSON` are accepted, while `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`, `application/jsonp`, `application/jsonx`, `text/json`, any `+json` type (`application/vnd.api+json`, `application/json-patch+json`) and `text/plain; x=application/json` are 415 (ASSUMED). A missing or empty header, more than one `Content-Type` header line and a value with a comma (`application/json, text/plain`) are also 415 (ASSUMED, reject what is ambiguous).
+      **Every** response of `/auth/refresh` and `/auth/logout` sends `Vary: Origin`, whatever the status (200, 204, 401, 403 and 429; the 429 of `/auth/refresh` also sends `Retry-After`). These two endpoints take no body, so they have no 415.
     - **Security headers and caching (ADR-004):** **every response under `/api/v1/*`**, errors included, sends
       `Cache-Control: no-store` (the `NoStore` header is also declared explicitly on token-bearing responses); every API response also sends
       `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP.
@@ -82,7 +82,7 @@ info:
       endpoint** (counted whether or not the request succeeds) and is configurable by environment variables (ADR-002).
       There is no per-account login limit and no account lockout: per-account lockout is out of scope (story F1-2) and is not offered.
       `POST /organizations` also has a per-user limit (429, default 10 per 60 s), an architect addition from the
-      security review (finding 5) accepted by the Orchestrator; drop it if it is out of scope.
+      security review (finding 5) accepted by the Orchestrator; drop it if it is out of scope. It has no per-IP limit, and because it is keyed on the authenticated user id it runs after 415 and 401 (see the order of checks above; ASSUMED architect decision).
 servers:
   - url: /api/v1
     description: Relative to the site origin. In docker compose the frontend proxies /api to the backend (http://localhost:8000 when called directly).
@@ -197,6 +197,7 @@ paths:
           description: New access token issued, refresh cookie rotated.
           headers:
             Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
             Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
@@ -213,13 +214,14 @@ paths:
               schema: { type: string }
               description: Bearer
             Set-Cookie: { $ref: '#/components/headers/CookieCleared' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
               example:
                 error: { code: UNAUTHENTICATED, message: Authentication required., details: [] }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '429': { $ref: '#/components/responses/RateLimited' }
+        '403': { $ref: '#/components/responses/ForbiddenCookieEndpoint' }
+        '429': { $ref: '#/components/responses/RateLimitedCookieEndpoint' }
   /auth/logout:
     post:
       tags: [Auth]
@@ -244,8 +246,9 @@ paths:
           description: Family revoked (if any) and cookie cleared.
           headers:
             Set-Cookie: { $ref: '#/components/headers/CookieCleared' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
             Cache-Control: { $ref: '#/components/headers/NoStore' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { $ref: '#/components/responses/ForbiddenCookieEndpoint' }
   /auth/me:
     get:
       tags: [Auth]
@@ -275,7 +278,7 @@ paths:
       description: |
         Allowed only for a user without an organization (one organization per user in the MVP);
         otherwise 409 `ALREADY_IN_ORGANIZATION`. The response contains a **new access token that
-        includes the `org` claim**; the refresh cookie is not rotated (the `org` claim is re-read from the database on every refresh). The client must replace its access token. Per-user rate limit (429, architect addition, default 10 per 60 s, ASSUMED).
+        includes the `org` claim**; the refresh cookie is not rotated (the `org` claim is re-read from the database on every refresh). The client must replace its access token. Per-user rate limit (429, architect addition, default 10 per 60 s, ASSUMED); there is no per-IP limit on this endpoint. **Order of checks: 415 (`Content-Type` is not `application/json`), 401 (no or bad access token), 429 (per-user limiter, keyed on the authenticated user id, so it needs 401 first), 400 (body shape), 409 (already in an organization)** (ASSUMED architect decision, ADR-004 section 3). A 415 or 401 answer never counts against a user's bucket; an authenticated request that passed both counts whether it later gets 400, 409 or 201. The 429 carries `Retry-After`.
       x-features: [F2]
       x-roles: [no-organization]
       requestBody:
@@ -689,6 +692,11 @@ components:
       description: '`refresh_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=<seconds left until login time + 7 days>` (at most 604800). `Secure` may be off only when `APP_ENV` is not `production`.'
       schema:
         type: string
+    VaryOrigin:
+      description: '`Origin`. Sent on every response of `/auth/refresh` and `/auth/logout`, whatever the status, because the outcome depends on the `Origin` request header (ADR-004, security-bot N13 and L-4).'
+      schema:
+        type: string
+        enum: [Origin]
     NoStore:
       description: '`no-store`. Responses carrying tokens or tenant data must not be cached.'
       schema:
@@ -741,6 +749,15 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
           example:
             error: { code: FORBIDDEN, message: Admin role required., details: [] }
+    ForbiddenCookieEndpoint:
+      description: '403 The CSRF guard of `/auth/refresh` or `/auth/logout` failed (`FORBIDDEN`): the `X-Requested-With: feedback-board` header is missing or a present `Origin` is not `FRONTEND_ORIGIN`. Sends `Vary: Origin` (security-bot N13 and L-4).'
+      headers:
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: FORBIDDEN, message: Request rejected., details: [] }
     NotFound:
       description: 404 Resource does not exist **or belongs to another organization** (`POST_NOT_FOUND`, `INVITE_NOT_FOUND`). The two cases are indistinguishable. For an invite the message is `Invite link is invalid` (story F2-1).
       content:
@@ -756,11 +773,23 @@ components:
           example:
             error: { code: EMAIL_TAKEN, message: Email already registered, details: [] }
     RateLimited:
-      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per client IP (default 10 requests per rolling 60 seconds per endpoint, ASSUMED in the brief and stories F1-2 and F3-1) to signup, login, refresh, invite preview and invite accept, and per user (default 10 per 60 s) to organization create; **not** to logout, and there is no per-account login limit or lockout (out of scope, not offered). Configurable by environment variables (ADR-002).'
+      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per client IP (default 10 requests per rolling 60 seconds per endpoint, ASSUMED in the brief and stories F1-2 and F3-1) to signup, login, refresh, invite preview and invite accept, and per user (default 10 per 60 s) to organization create, which runs after 415 and 401 (its limiter needs the user id); **not** to logout, and there is no per-account login limit or lockout (out of scope, not offered). Configurable by environment variables (ADR-002).'
       headers:
         Retry-After:
           schema: { type: integer, minimum: 1 }
           description: Whole seconds to wait, at least 1.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: RATE_LIMITED, message: Too many requests. Try again later., details: [] }
+    RateLimitedCookieEndpoint:
+      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per client IP (default 10 requests per rolling 60 seconds per endpoint, ASSUMED in the brief and stories F1-2 and F3-1) to signup, login, refresh, invite preview and invite accept, and per user (default 10 per 60 s) to organization create, which runs after 415 and 401 (its limiter needs the user id); **not** to logout, and there is no per-account login limit or lockout (out of scope, not offered). Configurable by environment variables (ADR-002). Used by `/auth/refresh`, whose 429 also sends `Vary: Origin` (L-4).'
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+          description: Whole seconds to wait, at least 1.
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

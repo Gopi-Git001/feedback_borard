@@ -114,11 +114,11 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 | `RATE_LIMIT_REFRESH_PER_IP` | same | `10/60` | backend | no | refresh, per client IP (F1-2) |
 | `RATE_LIMIT_INVITE_PREVIEW_PER_IP` | same | `10/60` | backend | no | invite preview, per client IP (F3-1) |
 | `RATE_LIMIT_INVITE_ACCEPT_PER_IP` | same | `10/60` | backend | no | invite accept, per client IP (brief; not in a story) |
-| `RATE_LIMIT_ORG_CREATE_PER_USER` | same | `10/60` | backend | no | organization create, per user id (architect addition) |
+| `RATE_LIMIT_ORG_CREATE_PER_USER` | same | `10/60` | backend | no | organization create, per user id, checked after 415 and 401 (architect addition, ASSUMED) |
 
 Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit or lockout: out of scope, not offered, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
 
-Accepted risks and known limits that touch these settings (rate limits, `RATE_LIMIT_ENABLED`, `REFRESH_REUSE_LEEWAY_SECONDS`, `TRUSTED_PROXY_IPS`, `INVITE_TOKEN_KEY`) are recorded only in ADR-004 section 7 (register R1-R17); there is no second copy here. R7 (the SQL was never run on PostgreSQL) is a gate in three checkpoints, G1 at TASK-006 (migration on `postgres:18.6-alpine` and DDL constraint tests), G2 at TASK-010 (advisory-lock tests) and G3 at TASK-017 (key-rotation tests); it closes when G3 passes.
+Accepted risks and known limits that touch these settings (rate limits, `RATE_LIMIT_ENABLED`, `REFRESH_REUSE_LEEWAY_SECONDS`, `TRUSTED_PROXY_IPS`, `INVITE_TOKEN_KEY`) are recorded only in ADR-004 section 7 (register R1-R17); there is no second copy here. R7 (the SQL was never run on PostgreSQL) is a gate in three checkpoints, G1 at TASK-006 (migration on `postgres:18.6-alpine` and DDL constraint tests), G2 at TASK-010 (the four advisory-lock tests, each with a one-transaction assertion for the locking re-read and the writes, and the limiter tests for signup, login and refresh; the invite limiter tests are at TASK-017 and the nginx client-address test at TASK-007, ASSUMED assignment) and G3 at TASK-017 (key-rotation tests); it closes when G3 passes.
 
 ## Change log
 - 2026-10-27: initial pinned set (TASK-001, architect-bot).
