@@ -1,9 +1,9 @@
 # Handoff: TASK-002 User stories with testable acceptance criteria for F1-F9
-Bot: ba-bot   Attempt: 1   PR: (set when the PR is opened)   Branch: feature/TASK-002-user-stories
+Bot: ba-bot   Attempt: 2   PR: https://github.com/Gopi-Git001/feedback_borard/pull/1   Branch: feature/TASK-002-user-stories
 
 ## Open questions (read first)
 1. **Brief is not approved.** brief.md says "Status: DRAFT (fast-track; approval requested)". The Definition of Ready requires an APPROVED brief. I set stories READY on the assumption the brief will be approved unchanged; if the brief changes, re-run review-story-readiness. Needs: Orchestrator / human approval.
-2. **F3-1 (blocks READY, story left DRAFT):** Does each click on "Generate invite link" create a new token, or does the organization have one persistent token that is shown again? Since revocation is not in the MVP, new tokens would leave every older link valid. Needs a product decision.
+2. **F3-1 invite token (RESOLVED by Orchestrator):** one persistent invite token per organization; "Invite" shows the same link every time and never mints a new token. F3-1 updated and now READY.
 3. **Limits are not in the brief.** I used concrete, testable numbers marked ASSUMED; please confirm or replace: password min 8 chars; organization name 1-60; post title 1-120; post description 1-2000 (all three post fields required); comment 1-1000; invite token min 32 chars.
 4. **Invite link when logged out:** I assumed the user must sign up / log in first and the invite is then applied (F2-1). Confirm, or say that the token is carried through the sign-up form.
 5. **Login error text** is identical for wrong password and unknown email (ASSUMED, does not reveal which emails exist).
@@ -15,7 +15,7 @@ Bot: ba-bot   Attempt: 1   PR: (set when the PR is opened)   Branch: feature/TAS
 11. **File naming:** TASK-002 says F<n>-<slug>.md; the write-user-stories skill says <FEATURE-ID>-<n>-<slug>.md. I followed the skill (e.g. F1-1-signup-login.md). Rename if you prefer the shorter form.
 
 ## Summary
-Ten story files in docs/project/stories/: one per feature F1-F9 and one end-to-end journey (E2E-1). Each has Given/When/Then criteria with concrete values, covering happy path, validation, duplicate email, wrong password, invalid invite, 403 for members on admin actions, 404 for cross-organization access, empty board and newest-first tie-break. Nine stories are READY; F3-1 is DRAFT because of one open product question.
+Ten story files in docs/project/stories/: one per feature F1-F9 and one end-to-end journey (E2E-1). Each has Given/When/Then criteria with concrete values, covering happy path, validation, duplicate email, wrong password, invalid invite, 403 for members on admin actions, 404 for cross-organization access, empty board and newest-first tie-break. All ten stories are READY (conditional on brief approval, Q1).
 
 ## Acceptance criteria
 | Criterion | Status (met / not met) | Test that proves it |
@@ -49,7 +49,7 @@ No automated tests (docs task). Manual review-story-readiness run on each story 
 |-------|--------|------------------|
 | F1-1 signup-login | READY | Limits ASSUMED (Q3); brief not approved (Q1). Failure: duplicate email #2, validation #3, wrong password #5, unauthenticated 401 #6 |
 | F2-1 organization-create-join | READY | Q1, Q3, Q4. Failure: validation #2, invalid invite #4, already in org #5, 401 #6 |
-| F3-1 invite-link | DRAFT | QUESTION open (Q2): new token per click vs one persistent token. Permission: member 403 #3, 401 #5 |
+| F3-1 invite-link | READY | Q2 resolved: one persistent token per org. Same link on repeat #2, member 403 #3, isolation #4, 401 #5 |
 | F4-1 posts | READY | Q1, Q3. Failure: validation #2, #3; 404 cross-org #4; 401 #6 |
 | F5-1 upvotes | READY | Q1, Q8. Failure: 404 cross-org #4, missing post #5, 401 #6; vote twice = toggle (per brief ASSUMED) #2 |
 | F6-1 comments | READY | Q1, Q3. Failure: validation #2, 404 #4/#5, 401 #6; empty state #3 |
@@ -64,10 +64,10 @@ Definition of Ready boxes all checked for the READY rows except "traces to an AP
 - Followed the skill's file naming (Q11).
 - Used ASSUMED concrete limits so criteria are testable without vague words (Q3).
 - Stories name HTTP codes 401/403/404 only, per the task, and no endpoints or field names (API design is out of scope).
-- Left F3-1 DRAFT rather than guess the invite-token behavior.
+- F3-1: one persistent invite token per organization, per Orchestrator decision (attempt 2); stories keep the other ASSUMED items marked ASSUMED, accepted by the Orchestrator as working assumptions for the single human approval.
 - Vote toggle, any-direction status, hard delete cascade: followed the brief's ASSUMED list where it applies, flagged the rest.
 
 ## Suggested follow-up tasks
-- Orchestrator: answer Q1-Q4 and Q7, then I update the stories and flip F3-1 to READY.
+- Orchestrator: put the ASSUMED items (Q1, Q3, Q4, Q6-Q8) in front of the human in the approval message; if any answer changes, re-run review-story-readiness.
 - architect-bot / TASK-001: align the API contract error codes (401/403/404, validation) with these stories.
 - qa-bot: derive the pytest and Playwright test list from the criteria; E2E-1 is the Playwright scenario.

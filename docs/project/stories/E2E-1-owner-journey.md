@@ -7,7 +7,7 @@ This story is the Playwright e2e target. Alice = first user (becomes admin). Bob
 ## Acceptance criteria
 1. (F1) Given no accounts exist, When Alice signs up with "alice@example.com" and password "Passw0rd!x", Then she is logged in and sees the "create or join organization" step.
 2. (F2) Given Alice is logged in with no organization, When she creates the organization "Acme", Then she is admin of "Acme" and sees an empty board with the text "No posts yet".
-3. (F3, F2) Given Alice is admin of "Acme", When she generates an invite link and Bob signs up as "bob@example.com" and opens that link and accepts, Then Bob is a member (not admin) of "Acme" and sees the same empty board.
+3. (F3, F2) Given Alice is admin of "Acme", When she clicks "Invite" and Bob signs up as "bob@example.com" and opens that link and accepts, Then Bob is a member (not admin) of "Acme" and sees the same empty board.
 4. (F4, F7) Given Bob is a member of "Acme", When he creates a post with title "Dark mode", a description, and type "idea", Then the post appears on the board with status "New" and 0 votes, visible to both Alice and Bob.
 5. (F5) Given the post "Dark mode" has 0 votes, When Alice and then Bob each upvote it once, Then it shows 2 votes; and when Bob clicks upvote again, Then it shows 1 vote.
 6. (F6) Given the post "Dark mode" has no comments, When Bob adds the comment "Would help at night.", Then Alice sees that comment, with Bob as author, under the post.
@@ -31,5 +31,5 @@ Post-MVP features, delete success path (covered by F9-1), validation and duplica
 ## Assumptions / Questions
 - Journey has 9 criteria (more than the usual 6) on purpose: it is one flow with two roles and two organizations; it is a single end-to-end scenario, not one task of work. Justified exception.
 - The "owner's done definition" is not written in the repo; the steps follow the wording in the TASK-002 request (see handoff Open questions).
-- Depends on F3-1 behavior only for "a generated link lets a new user join"; the open question in F3-1 (new token per click or one persistent token) does not change this flow.
+- Depends on F3-1 only for "the invite link lets a new user join"; F3-1 uses one persistent token per organization.
 - Brief status was DRAFT when this was written; READY is conditional on brief approval.
