@@ -19,11 +19,11 @@ Traces to brief feature F3 and to the approved addition "The invite token never 
 - Malformed, wrong-length and unknown tokens are indistinguishable (always 404, never 400 for a string token of any length; a missing or non-string `token` field, or any extra field, gives 400 VALIDATION_ERROR, and a non-JSON Content-Type gives 415, both in F3-4) (contract, ADR-003).
 - A logged-out visitor's token is kept in sessionStorage (key "pending_invite") only while signing up or logging in; it is the one deliberate use of Web Storage (ADR-003). The access token is never put in Web Storage (ADR-002).
 - Accept needs a login (401 without one, see F2-1 criterion 6); preview is public. Order of checks on accept: 429, 415, 401, 400, 404, 409 (F3-4 criterion 4).
-- Accept is rate limited per IP address (HTTP 429; brief.md: invite preview/accept, ASSUMED 10 requests per 60-second window per IP per endpoint, window type an implementation detail; decided by the Orchestrator, TASK-040 Attempt 2; the contract at head bf3fabb now says per IP, checked before authentication; configurable with RATE_LIMIT_INVITE_ACCEPT_PER_IP, ADR-002).
+- Accept is rate limited per IP address (HTTP 429; brief.md: invite preview/accept, ASSUMED 10 requests per 60-second window per IP per endpoint, window type an implementation detail; decided by the Orchestrator, TASK-040 Attempt 2; the contract on main says per IP, checked before authentication; configurable with RATE_LIMIT_INVITE_ACCEPT_PER_IP, ADR-002).
 
 ## UI notes
 - The "/join" page shows the organization name from the preview and "Join" (ASSUMED label) after login, or the sign-up and login choice when logged out (ASSUMED layout).
-- Any 404 from preview or accept shows "Invite link is invalid" (contract-sourced: api-contract.yaml, NotFound response and previewInvite description; ADR-003 Decision, "Link and API"; the brief gives no wording and the contract is still Proposed).
+- Any 404 from preview or accept shows "Invite link is invalid" (contract-sourced: api-contract.yaml, NotFound response and previewInvite description; ADR-003 Decision, "Link and API"; the brief gives no wording and the contract on main still states status Proposed).
 
 ## Data touched
 - Invite: token hash and token version (read), organization.
@@ -36,8 +36,8 @@ Showing the link to admins (F3-1), joining rules such as already belonging to an
 ## Assumptions / Questions
 - ASSUMED: the rate-limit threshold in criterion 6 (10 per 60-second window; tests must not depend on the window boundary, same test technique as F1-2: a small limit N with a long window, request N+1 is the first 429), the "Join" label, the page layout, and that requests count whether or not the token is valid.
 - ASSUMED: criterion 3 is browser behaviour checked in an e2e or component test (ADR-003 SPA requirement: replaceState); the fragment is removed "immediately" (no time limit in ADR-003).
-- Retry-After at least 1 is contract-sourced at head bf3fabb (and at 6a961c3; it was ASSUMED at 0459573).
+- Retry-After at least 1 is contract-sourced (on main; it was ASSUMED in the earliest draft of the contract).
 - The 400 case (missing, non-string or extra `token` field), the 415 case and the order of checks are criteria of F3-4 (split from this story, which is full at 6 criteria).
 - Criterion 2 needs a test setup that can read the application and proxy logs (ADR-003 "Tests (qa-bot)"); how is up to qa-bot and backend-bot.
 - HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract. 401 is ASSUMED in the contract, so it stays ASSUMED here too.
-- Contract check (TASK-040 Attempt 4): checked against api-contract.yaml, ADR-003, ADR-002 and data-model.md on the TASK-001 branch (PR #2, head bf3fabbe3339c16b9f87293e7e748ca2fcb0e41a, Proposed, not on main). ADR-003 itself is Proposed and security-bot has not re-reviewed its rotation rule yet. Recheck once merged to main.
+- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): checked against api-contract.yaml, ADR-003, ADR-002 and data-model.md on main (commit 4a2e08423380ee872acf08043bd046adda4c4766, which merged PR #2; contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line still says Proposed). ADR-003 itself is Proposed and security-bot has not re-reviewed its rotation rule yet.

@@ -17,6 +17,7 @@ As a member, I want to create a post with a title, description and type (idea or
 - Members cannot edit or delete posts (brief ASSUMED).
 - Every post belongs to exactly one organization, the author's.
 - A post names its author by display name only; the email is never shown to other members (API contract).
+- A request that creates a post with a Content-Type whose media type is not "application/json" is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
 
 ## UI notes
 - "New post" form (ASSUMED label) with title, description, and a type selector (idea / bug).
@@ -32,5 +33,5 @@ Editing or deleting own posts (post-MVP), attachments, search, tags, drafts.
 - ASSUMED: title 1-120 and description 1-2000 characters, both required.
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
-- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Recheck once the contract is merged to main.
-- Contract check (TASK-040 Attempt 4): api-contract.yaml is still not on main (checked with git ls-tree on origin/main); it is on PR #2 (branch feature/TASK-001-stack-and-contracts, head bf3fabbe3339c16b9f87293e7e748ca2fcb0e41a, status Proposed; the values this line relies on are unchanged since 0459573). Post author is exposed as display name only (no email); title, description and type limits match the contract. Recheck once it is merged to main.
+- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Checked against the contract on main (commit 4a2e08423380ee872acf08043bd046adda4c4766).
+- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): api-contract.yaml is on main (commit 4a2e08423380ee872acf08043bd046adda4c4766, which merged PR #2; contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line still says Proposed). Post author is exposed as display name only (no email); title, description and type limits match the contract.
