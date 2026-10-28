@@ -27,12 +27,15 @@ def main(argv: list[str] | None = None) -> None:
 
     # ADR-002: the application parses forwarded headers itself, so uvicorn must not.
     # Bind is loopback until TASK-007 runs this process inside the backend container.
+    # log_config=None keeps uvicorn from installing its own handlers, which
+    # would bypass the redacting handler installed above.
     uvicorn.run(
         create_app(settings),
         host="127.0.0.1",
         port=8000,
         proxy_headers=False,
         forwarded_allow_ips="",
+        log_config=None,
     )
 
 

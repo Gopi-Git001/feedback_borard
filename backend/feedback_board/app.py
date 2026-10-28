@@ -27,10 +27,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         stored: Engine = app.state.engine
         stored.dispose()
 
+    # The contract does not define /docs, /redoc, or /openapi.json.
     app = FastAPI(
         title="Team Feedback Board API",
         version="1.0.0",
         lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     app.state.settings = resolved
     app.state.engine = engine

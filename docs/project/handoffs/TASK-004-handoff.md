@@ -1,138 +1,104 @@
 # Handoff: TASK-004 Backend skeleton
-Bot: backend-bot   Attempt: 1   PR: https://github.com/Gopi-Git001/feedback_borard/pull/22   Branch: feature/TASK-004-backend-skeleton
+Bot: backend-bot   Attempt: 2 (review fixes)   PR: (link filled after open)   Branch: fix/TASK-004-review-fixes
 
-Base: main commit `11497e9` (`11497e9a337fdad6d56582077ac3c529d77e3e44`).
+Original delivery merged as `364d9b9` (PR #22) before review. This attempt answers qa-bot's post-merge review (https://github.com/Gopi-Git001/feedback_borard/pull/22#issuecomment-6459670465) and security-bot P22-2 and P22-3. P22-1 is not built here.
 
 ## Summary
-Adds the FastAPI backend skeleton under `backend/`: a uv project on Python 3.14.10 with the stack.md pins and a committed `uv.lock`, `GET /api/v1/health`, startup refusal when configuration is missing or too weak, and one JSON error body for validation, 404, 405, and unhandled 500. Pytest runs against real PostgreSQL 18.6 (not mocked). `postgresql+psycopg://` works with SQLAlchemy 2.1.6 and psycopg 3.3.6 (`binary` extra). No Alembic migrations, no auth endpoints, and no Dockerfile.
+The skeleton on main is unchanged in scope: uv project on Python 3.14.10, `GET /api/v1/health`, startup refusal for a missing or short `JWT_SECRET`, and the contract error body. This fix branch changes how tests connect, what the handoff claims, the docs routes, and log redaction.
 
-`TEAM-CONVENTIONS.md` and `backend-bot/skills/build-api-endpoint/SKILL.md` are not in this repo. `https://github.com/Gopi-Git001/Saas_Bot` returned 404 to the GitHub API, so the handoff follows section 5 as stated in the task and the layout of `TASK-003-handoff.md`. The skill rules that were in the task (layered route/service/repository, validate at the edge, contract error body, structured logs without secrets, one test per acceptance criterion, run build/tests/lint/type check) are what the code follows.
+Pytest still runs against real PostgreSQL 18.6. The default connection is the restricted role `feedback_app`. Passwords come only from the environment. `postgresql+psycopg://` still works with SQLAlchemy 2.1.6 and psycopg 3.3.6 (`binary` extra).
 
 ## Acceptance criteria
-| Criterion (plan.md TASK-004, commit 11497e9) | met / not met | Evidence |
+| Criterion | met / not met | Evidence |
 |---|---|---|
-| uv project on Python 3.14 with stack.md pins and a lock file | met | `tests/test_project_pins.py` (`test_runtime_is_python_314`, `test_python_and_dependency_pins`, `test_lock_file_matches_pins`). Runtime: CPython 3.14.10, uv 0.13.6. Locked versions match the verified pins (FastAPI 0.162.0, SQLAlchemy 2.1.6, psycopg 3.3.6, ruff 0.17.3, mypy 2.4.0, and the rest of the backend table). |
-| `GET /api/v1/health` | met | `tests/test_health.py::test_health_ok`. 200 `{"status":"ok"}` while PostgreSQL is up. The contract file has no health path; the shape is a decision below. |
-| App refuses to start if `JWT_SECRET` is missing or shorter than 32 characters (clear error, non-zero exit) | met | `tests/test_startup.py::test_missing_jwt_secret_exits_nonzero` (exit code not 0, stderr `startup refused: JWT_SECRET is missing`). `test_short_jwt_secret_exits_nonzero_and_does_not_echo_it` (stderr `JWT_SECRET must be at least 32 characters`, the value is not printed). Both run `python -m feedback_board.main` in a subprocess. |
-| Every error uses `{error:{code,message,details}}`, and FastAPI 422 is remapped to 400 `VALIDATION_ERROR` | met | `tests/test_errors.py::test_request_validation_is_400_and_drops_the_submitted_value` (400, not 422, code `VALIDATION_ERROR`, submitted value absent). `test_unknown_path_is_404` (`NOT_FOUND`). `test_wrong_method_is_405` (`METHOD_NOT_ALLOWED`). `test_unhandled_exception_is_500_without_the_message` (`INTERNAL_ERROR`, exception text not in the body). |
-| pytest runs against real PostgreSQL 18 | met | `tests/test_database_connection.py::test_postgresql_psycopg_scheme_connects_to_postgres_18` and `tests/test_health.py` (health pings `SELECT 1`). No database mock. Server: PostgreSQL 18.6. How the server was started is under Test results (Docker was not available). |
-| Backend lint and type check run clean (ruff `~=0.17.3`, mypy `~=2.4.0`) | met | `uv run ruff check .`, `uv run ruff format --check .`, and `uv run mypy` below. Not a pytest; the commands are the check. |
-| `postgresql+psycopg://` works with the pinned driver and SQLAlchemy against real PostgreSQL 18 | met | Same connection test. drivername `postgresql+psycopg`, dialect driver `psycopg`, `SELECT 1` returned 1, `version()` is PostgreSQL 18.6. Extra required: `psycopg[binary]` (locked `psycopg-binary` 3.3.6). No further extra. |
+| uv project on Python 3.14 with stack.md pins and a lock file | met | `tests/test_project_pins.py`. Runtime CPython 3.14.10, uv 0.13.6. |
+| `GET /api/v1/health` | met | `tests/test_health.py::test_health_ok`. 200 `{"status":"ok"}`. The contract has no health path. |
+| App refuses to start if `JWT_SECRET` is missing or shorter than 32 characters | met | `tests/test_startup.py::test_missing_jwt_secret_exits_nonzero` and `test_short_jwt_secret_exits_nonzero_and_does_not_echo_it` (subprocess, non-zero exit, value not printed). |
+| Every error uses `{error:{code,message,details}}`, and FastAPI 422 is remapped to 400 `VALIDATION_ERROR` | met | `tests/test_errors.py`. |
+| Undefined edit route `PATCH /api/v1/posts/1` is 404 or 405, not 415 | met | `tests/test_errors.py::test_undefined_edit_route_is_not_415` (text/plain body). |
+| pytest runs against real PostgreSQL 18.6 | met | `tests/test_database_connection.py` asserts `"18.6"` in `server_version`. No database mock. |
+| ruff and mypy clean | met | Outputs below. |
+| `postgresql+psycopg://` works | met | Same connection test. driver `psycopg`, `SELECT 1` is 1, server is PostgreSQL 18.6. Extra: `psycopg[binary]` only. |
+| Backend refuses to start on a superuser, `BYPASSRLS`, or owner app role (R18 condition 3) | **not met here** | Owned by TASK-006. ADR-004 R18 condition 3 says the check is tested at TASK-006 with the real roles. Not built in this PR. It must land before any later task builds on the app role. |
+| `/docs`, `/redoc`, `/openapi.json` are off | met | `tests/test_errors.py::test_interactive_docs_are_disabled`. All three return 404 with the standard error body. |
 
-## Files changed
-- `backend/pyproject.toml` (new)
-- `backend/uv.lock` (new)
-- `backend/.python-version` (new)
-- `backend/README.md` (placeholder replaced with a pointer to this handoff)
-- `backend/feedback_board/` (app factory, settings, health route/service/repository, errors, middleware, logging, entrypoint)
-- `backend/tests/` (pins, startup, health, errors, database connection)
+## Files changed (this fix)
+- `backend/feedback_board/logging_config.py` (redaction filter on the handler; uvicorn loggers share it)
+- `backend/feedback_board/main.py` (`uvicorn.run(..., log_config=None)`)
+- `backend/feedback_board/app.py` (`docs_url`, `redoc_url`, `openapi_url` are `None`)
+- `backend/tests/support.py` (app role by default; passwords from the environment; owner URL helper)
+- `backend/tests/conftest.py` (`owner_database_url` and `owner_engine` fixtures for later DDL)
+- `backend/tests/test_database_connection.py`, `test_errors.py`, `test_health.py`, `test_logging.py`
 - `docs/project/handoffs/TASK-004-handoff.md` (this file)
 
 ## How to test locally
-Docker path (the compose `db` service on main). The example `DATABASE_URL` uses role `feedback_app`, which TASK-003 does not create. Use the owner role the `db` service does create (`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` from `.env.example`):
+`feedback_app` is created by `db/init/01-roles.sh` (PR #19). `.env.example` leaves `POSTGRES_PASSWORD` and `APP_DB_PASSWORD` empty on purpose. `scripts/init-env.sh` is not on main yet (devops-bot). Until that script lands, generate the two passwords with `openssl rand -hex 24` (two different values). Do not commit them.
 
 ```
+openssl rand -hex 24    # POSTGRES_PASSWORD
+openssl rand -hex 24    # APP_DB_PASSWORD
 cp .env.example .env
+# Put those values in POSTGRES_PASSWORD and APP_DB_PASSWORD.
+# Replace REPLACE_WITH_APP_DB_PASSWORD and REPLACE_WITH_POSTGRES_PASSWORD
+# in the two URLs with the same values. Hex needs no percent-encoding.
 docker compose up -d db
 cd backend
-# uv 0.13.6, then:
 uv python install 3.14.10
 uv sync
-export DATABASE_URL='postgresql+psycopg://feedback_owner:change-me-owner-password@127.0.0.1:5432/feedback_board'
+export APP_DB_USER=feedback_app
+export APP_DB_PASSWORD='…'          # the value you generated
+export POSTGRES_USER=feedback_owner
+export POSTGRES_PASSWORD='…'        # the other value; only the owner fixture reads it
+export POSTGRES_DB=feedback_board
+export POSTGRES_HOST=127.0.0.1
+export POSTGRES_HOST_PORT=5432
+unset DATABASE_URL                  # the suite then builds the feedback_app URL
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 ```
 
-Do not export the `.env.example` `JWT_SECRET` into the pytest process. The tests set their own secrets. To boot the app itself, generate secrets (the placeholders are rejected):
+The suite's default `DATABASE_URL` is `postgresql+psycopg://feedback_app:<APP_DB_PASSWORD>@127.0.0.1:5432/feedback_board`. `owner_engine` is a separate fixture for later DDL (TASK-006). It is not the app connection.
 
-```
-export APP_ENV=test
-export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-export INVITE_TOKEN_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-export FRONTEND_ORIGIN=http://localhost:8080
-export TRUSTED_PROXY_IPS=127.0.0.1
-export DATABASE_URL='postgresql+psycopg://feedback_owner:change-me-owner-password@127.0.0.1:5432/feedback_board'
-uv run python -m feedback_board.main --check   # exit 0
-uv run --env-file ../.env python -m feedback_board.main --check   # exit non-zero: placeholders
-```
+JWT and invite secrets for pytest are generated in `tests/support.py`. Do not export the `.env.example` placeholders into that process. To boot the app, generate `JWT_SECRET` and `INVITE_TOKEN_KEY` with `secrets.token_urlsafe(48)` and export `DATABASE_URL` for `feedback_app`. `python -m feedback_board.main --check` exits 0 when that set is valid. A copied `.env.example` still fails `--check` because the JWT placeholder is rejected.
 
-`--check` loads settings and exits. It does not listen. `python -m feedback_board.main` with a valid environment listens on `127.0.0.1:8000`.
-
-This run did not use Docker. See Test results for the PostgreSQL 18.6 install that the suite actually used.
+This run did not use Docker. PostgreSQL 18.6 was the PGDG package `postgresql-18` `18.6-1.pgdg24.04+2`, started with `pg_ctlcluster 18 main start`. The app role was created with the same SQL as `db/init/01-roles.sh`. Passwords were `openssl rand -hex 24` and were not committed.
 
 ## Test results
-Environment: Ubuntu 24.04.5, no Docker (no `docker` binary, no `/var/run/docker.sock`, pid 1 is `tini`, so there is no systemd). PostgreSQL was installed from the official PGDG apt repository and started by hand:
+uv 0.13.6. CPython 3.14.10. Commands run in `backend/` against PostgreSQL 18.6 as `feedback_app` (`rolsuper` false, `rolbypassrls` false).
 
-- package `postgresql-18` version `18.6-1.pgdg24.04+2` (PostgreSQL 18.6, the same version as the `postgres:18.6-alpine` image pin)
-- `sudo pg_ctlcluster 18 main start` (`policy-rc.d` had denied the package's service start)
-- role `feedback_owner` with the `.env.example` placeholder password, database `feedback_board`, port `127.0.0.1:5432` (same names as `docker-compose.yml`)
+**pytest** (`uv run pytest -q`): 33 passed, 1 warning in 3.46s.
 
-uv `0.13.6`. CPython `3.14.10`. Commands were run in `backend/`.
-
-Connection evidence (`SELECT 1` and `SELECT version()` through SQLAlchemy, URL scheme `postgresql+psycopg`):
-
-```
-drivername postgresql+psycopg
-dialect postgresql psycopg
-select_1 1
-PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg24.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
-```
-
-`psycopg[binary]` is the extra that was installed (`psycopg` 3.3.6 and `psycopg-binary` 3.3.6). SQLAlchemy 2.1.6. The scheme works. No other driver extra was required.
-
-**pytest** (`uv run pytest -q`):
-
-```
-.............................                                            [100%]
-=============================== warnings summary ===============================
-.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
-  /workspace/backend/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
-    from starlette.testclient import TestClient as TestClient  # noqa
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-29 passed, 1 warning in 3.51s
-```
-
-The warning is Starlette 1.10.0 (pulled in by FastAPI 0.162.0) asking for `httpx2`. `httpx2` is not pinned in stack.md. The suite stays on the pinned `httpx` 0.28.1. Tests passed.
+The warning is Starlette's `StarletteDeprecationWarning`: `Using httpx with starlette.testclient is deprecated; install httpx2 instead.` It is raised from the installed `fastapi/testclient.py`. `httpx2` is not pinned in stack.md, so the suite stays on `httpx` 0.28.1. The warning's filename is that local virtualenv file; the machine path is not copied here.
 
 **ruff** (`uv run ruff check .` and `uv run ruff format --check .`):
 
 ```
 All checks passed!
-23 files already formatted
+24 files already formatted
 ```
 
-**mypy** (`uv run mypy`, strict, Python 3.14):
+**mypy** (`uv run mypy`, strict):
 
 ```
-Success: no issues found in 22 source files
+Success: no issues found in 23 source files
 ```
 
 ## Decisions made
-- **`JWT_SECRET` check is the ADR-002 rule, which includes the plan's length check.** plan.md still says "missing or <32 chars". ADR-002 and `.env.example` require unpadded base64url that decodes to at least 32 bytes, at least 16 distinct characters, and no weak or placeholder fragment. A 32-character string does not decode to 32 bytes, and the `.env.example` placeholder is longer than 32 characters and is documented as rejected on purpose. The length check runs first, so a short value still produces `JWT_SECRET must be at least 32 characters` and a non-zero exit. The placeholder, a 32-character value, a missing value, and a valid `token_urlsafe(48)` secret are all tested. The same rule is applied to `INVITE_TOKEN_KEY`, and the two values must differ, because `.env.example` says the process refuses otherwise.
-- **Other fail-closed settings from stack.md / ADR-002 / ADR-004 are enforced at startup** (`APP_ENV`, `DATABASE_URL` scheme `postgresql+psycopg`, bare `FRONTEND_ORIGIN`, `COOKIE_SECURE=false` and `RATE_LIMIT_ENABLED=false` only in `development` or `test` and not with a non-local `https` origin, `TRUSTED_PROXY_IPS` with no `*` / `0.0.0.0/0` / `::/0` and non-empty in production, rate-limit strings `<max>/<window_seconds>`). Error text names the variable and does not print the value. `DATABASE_MIGRATION_URL` is not read (Alembic is out of scope).
-- **Health response is `{"status":"ok"}`.** `api-contract.yaml` does not define `/health`. The route calls the repository, which runs `SELECT 1`. If that fails the status is 503 with `INTERNAL_ERROR` and message `Database unavailable` (still the standard error body). 503 is not in the contract's status list.
-- **404 and 405 codes are `NOT_FOUND` and `METHOD_NOT_ALLOWED`.** Those strings are not in the contract's `ErrorResponse.code` enum (that enum is the domain codes). The body shape matches the contract. Unhandled exceptions are 500 `INTERNAL_ERROR` with a fixed message; the exception text is not returned or logged.
-- **Validation `details` use Pydantic's rule text (`msg`) and drop `input` and `ctx`.** Field names drop the `body` / `query` / `path` prefix. The envelope message is `Request validation failed.`, matching the contract example.
-- **Logs are JSON** on the `feedback_board` logger: method, route template, status, duration, request id. `JWT_SECRET`, `INVITE_TOKEN_KEY`, the database URL, and its password are redacted if they appear. Unmatched paths are logged as `unmatched`, not as the raw path.
-- **Security headers from ADR-004** are set on API responses, including errors: `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`. No `Strict-Transport-Security` (plain HTTP). uvicorn is started with `proxy_headers=False`.
-- **The process listens on `127.0.0.1:8000`.** TASK-007 owns the container and will need `0.0.0.0` there. This task does not add a Dockerfile.
-- **Alembic, argon2-cffi, PyJWT, and email-validator are dependencies** so `uv.lock` pins the stack.md backend table. They are not used yet (TASK-006 and TASK-009).
-- **Tests connect as `feedback_owner`.** The restricted `feedback_app` role does not exist (TASK-003 open question 2). The scheme test is about the URL driver, not that role split.
-- **`hatchling` is not used.** `tool.uv.package = false`. No build-backend version was invented.
+- **Interactive docs are off.** `api-contract.yaml` does not define `/docs`, `/redoc`, or `/openapi.json` (`openapi: 3.0.3` is the document version, not a route). `FastAPI(..., docs_url=None, redoc_url=None, openapi_url=None)`. A test requires 404 and the standard error body for all three.
+- **Redaction filter is on the handler, not the logger.** Python does not apply a logger's filters to records that propagate from a child. `feedback_board`, `uvicorn`, `uvicorn.error`, and `uvicorn.access` share that handler and formatter, and do not propagate. `uvicorn.run` is called with `log_config=None` so uvicorn does not replace the handler. `tests/test_logging.py` captures that handler's output for a child logger and the three uvicorn loggers and asserts the secret is replaced with `[redacted]`.
+- **Tests default to `feedback_app`.** Passwords are read from `APP_DB_PASSWORD` and `POSTGRES_PASSWORD` only. There is no password literal in the backend tree. `owner_database_url` / `owner_engine` stay available for TASK-006 DDL and are not the default app URL.
+- **R18 startup refusal is not implemented.** ADR-004 R18 condition 3 places that check and its test at TASK-006 (owner role and a `BYPASSRLS` role exit non-zero and print no password; `feedback_app` starts). plan.md also lists it on TASK-004. This PR follows ADR-004 and the orchestrator: do not build it here. It must land in TASK-006 before any later task builds on the app role.
+- **404 `NOT_FOUND`, 405 `METHOD_NOT_ALLOWED`, and the health 503 status are outside the contract.** 503 still uses code `INTERNAL_ERROR`, which is in the enum; the status and the other two codes are not. The orchestrator is asking architect-bot. This PR does not invent contract codes.
+- **`JWT_SECRET` still uses the ADR-002 rule**, which includes the plan's "missing or shorter than 32 characters" check as the first failure. The value is never printed.
 
 ## Open questions
-1. Should `api-contract.yaml` gain `GET /health` with `{"status":"ok"}`, and should a database failure stay 503 `INTERNAL_ERROR`? Changing the contract needs an ADR.
-2. Should `NOT_FOUND` and `METHOD_NOT_ALLOWED` be added to the error-code enum?
-3. Starlette 1.10 warns that `TestClient` wants `httpx2`, which is not pinned. Stay on `httpx` 0.28.1 unless architect-bot pins a replacement.
-4. The CORS relaxation in ADR-002 (a cross-origin dev origin) is not implemented. There is no CORS middleware in this skeleton. The `COOKIE_SECURE` and `RATE_LIMIT_ENABLED` guards are in place. Vite's CSP is frontend.
-5. Confirm TASK-007 binds the container on `0.0.0.0` and creates the restricted database role before the app is pointed at `feedback_app`.
+1. Architect-bot: add `NOT_FOUND` and `METHOD_NOT_ALLOWED` to the error-code enum, or pick other codes, and decide whether a database failure on health stays HTTP 503. The orchestrator has asked.
+2. Starlette 1.10 wants `httpx2`. It is not pinned. Stay on `httpx` 0.28.1 unless architect-bot pins a replacement.
+3. The CORS relaxation in ADR-002 is still not implemented. There is no CORS middleware in this skeleton.
 
 ## Suggested follow-up tasks
-- TASK-006: Alembic `0001_initial` and the DDL tests. The dependency is already locked.
-- TASK-007: Dockerfile `python:3.14.10-slim-trixie`, listen on `0.0.0.0`, create the restricted role, set `DATABASE_URL` to that role.
-- TASK-008: CI pytest against `postgres:18.6-alpine`. `DATABASE_URL` must use a role that exists. Generate `JWT_SECRET` with `secrets.token_urlsafe(48)` (the `.env.example` placeholder must fail startup).
-- TASK-009: auth. Do not log passwords, hashes, or tokens; the redaction filter is the place to extend.
-- Architect: add `/api/v1/health` to the contract, or say the skeleton shape is accepted as-is.
+- **TASK-006, before any later task builds on the app role:** the R18 condition 3 startup refusal (superuser or `BYPASSRLS` exits non-zero, no password in the output; `feedback_app` starts), plus Alembic `0001_initial`. Use `owner_engine` for DDL, not the app URL. Then run `db/ops/revoke-app-on-alembic-version.sh`.
+- TASK-007: Dockerfile, listen on `0.0.0.0`. The restricted role already exists via `db/init/01-roles.sh`.
+- devops-bot: `scripts/init-env.sh`. Until it is on main, generate passwords with `openssl rand -hex 24`.
