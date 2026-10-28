@@ -23,31 +23,47 @@ info:
     - **Order of checks:** authentication (401), then resource lookup scoped to the caller's organization
       (404, including "exists in another organization"), then role (403). A member who targets an admin-only
       operation on a post of another organization gets 404, not 403, so existence is never revealed.
-    - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). `email` is compared case-insensitively.
+    - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). The same applies to `display_name` at signup: **trim leading and trailing whitespace first, then validate the length (1-80)**; the trimmed value is stored. `email` is compared case-insensitively.
     - **Error body** for every non-2xx: `{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`.
     - **No pagination in the MVP** (stories F7-1 and F6-1: all matching posts / comments are returned in one
       response). Lists are wrapped as `{ "items": [...] }` so that `next_cursor` can be added later without
       breaking clients. Adding pagination is a follow-up that needs a contract version bump.
-    - **Auth:** `Authorization: Bearer <access_token>` (15 min). The refresh token lives in an
-      HttpOnly cookie `refresh_token` (7 days, `Path=/api/v1/auth`) and is never visible to JavaScript.
+    - **Auth:** `Authorization: Bearer <access_token>` (15 min, `typ=access`). The refresh token lives in an
+      HttpOnly cookie `refresh_token` (`Path=/api/v1/auth`) and is never visible to JavaScript. It is **stored
+      server-side as a hash, rotated on every use, reuse-detected and revocable** (ADR-002, `refresh_tokens`
+      table): each login/signup starts a new token *family* with an **absolute 7-day cap from login**; rotation
+      never extends past `login time + 7 days`; reuse of a rotated or revoked token revokes the whole family;
+      logout revokes the family. After the 7 days the user must log in again.
       Token verification (ADR-002): `jwt.decode(..., algorithms=["HS256"], issuer="feedback-board",
-      audience="feedback-board-api", options={"require": ["exp", "iat", "sub", "iss", "aud", "typ", "jti"]})`,
-      then `typ` must equal `access` (or `refresh` on `/auth/refresh`). `org` is **not** in the required list
+      audience="feedback-board-api", leeway=30, options={"require": ["exp", "iat", "sub", "iss", "aud", "typ", "jti"]})`,
+      then `typ` must equal `access` on every API endpoint (a refresh token is never accepted as a bearer token)
+      and `refresh` only for the cookie on `/auth/refresh` and `/auth/logout`. `org` is **not** in the required list
       because it is absent until the user creates or joins an organization; every organization endpoint checks
-      for it and answers 403 `ORG_REQUIRED` when it is missing. `jti` is required to be present but not yet used
-      (no revocation table in the MVP).
+      for it and answers 403 `ORG_REQUIRED` when it is missing, and the membership row for `(sub, org)` must exist
+      (otherwise 401). The `jti` of a refresh token is its server-side identifier; the `jti` of an access token is unused.
+    - **CSRF guard on cookie endpoints** (`/auth/refresh`, `/auth/logout`): the request must carry the header
+      `X-Requested-With: feedback-board` and, when an `Origin` header is present, it must equal the configured
+      frontend origin; otherwise 403 `FORBIDDEN` and nothing changes. This is in addition to `SameSite=Strict`.
+    - **Security headers and caching (ADR-004):** responses of `/auth/*`, `/organizations*` and `/invites/*`
+      (they carry tokens or tenant data) send `Cache-Control: no-store`; every API response also sends
+      `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP.
+    - **Logging:** request bodies of `/auth/*` and `/invites/*`, and the `Authorization`, `Cookie` and
+      `Set-Cookie` headers, are never logged; 400 `details` never echo submitted values (field and rule only).
     - **ASSUMED (not in the stories):** users who have no organization yet (just signed up) may call only:
-      auth endpoints, `POST /organizations`, `POST /invites/{token}/accept`, `GET /invites/{token}`.
+      auth endpoints, `POST /organizations`, `POST /invites/accept`, `POST /invites/preview`.
       Every other endpoint returns 403 `ORG_REQUIRED` for them. The 401 rule above is also ASSUMED.
-    - **Invite token handling (ADR-003):** the invite token is a bearer secret that appears in the paths
-      `/invites/{token}` and `/invites/{token}/accept`. It must be redacted from access logs, error tracking
-      and reverse-proxy logs, and invite responses are `Cache-Control: no-store`. A malformed token (wrong
-      length or characters) is answered with 404 `INVITE_NOT_FOUND`, the same as an unknown token, never 400.
+    - **Invite token handling (ADR-003):** the invite token is a bearer secret and **never appears in a path or
+      query string**. The shareable link is `<frontend-origin>/join#<token>` (URL fragment, never sent to a
+      server); the SPA sends the token in a POST body to `POST /invites/preview` and `POST /invites/accept`.
+      Invite responses are `Cache-Control: no-store`. A malformed token (wrong length or characters) is answered
+      with 404 `INVITE_NOT_FOUND`, the same as an unknown token, never 400.
     - **Extras beyond the stories/brief:** `POST /auth/refresh` and `POST /auth/logout` go beyond story F1-1
       (F1-1 lists logout and session expiry as out of scope). They are approved per Orchestrator message 2026-10-27, relayed from the human, so they are not ASSUMED
       any more, but they are not mapped to a story either (`x-features: []`, `x-extra: true`).
       `display_name` is required at signup: approved per Orchestrator message 2026-10-27, relayed from the human; ba-bot will update the stories to match.
-      Rate limiting (429) is approved per Orchestrator message 2026-10-27, relayed from the human; limits are chosen by backend-bot.
+      Rate limiting (429) is approved per Orchestrator message 2026-10-27, relayed from the human, for signup, login, refresh and invite preview/accept (**not** for logout);
+      the thresholds are ASSUMED and configurable by environment variables (ADR-002). `POST /organizations` also
+      has a per-user limit (429), added after the security review (finding 5); drop it if it is out of scope.
 servers:
   - url: /api/v1
     description: Relative to the site origin. In docker compose the frontend proxies /api to the backend (http://localhost:8000 when called directly).
@@ -57,7 +73,7 @@ tags:
   - name: Organizations
     description: Create the organization and read the current one (F2).
   - name: Invites
-    description: Shareable invite link, preview and accept (F2, F3).
+    description: Shareable invite link (token in the URL fragment), preview and accept via POST body (F2, F3).
   - name: Posts
     description: Create, list and filter the board, change status, delete (F4, F7, F8, F9).
   - name: Votes
@@ -72,7 +88,7 @@ paths:
       tags: [Auth]
       operationId: signup
       summary: Sign up with email and password
-      description: Creates a user with no organization. Returns an access token (no `org` claim yet) and sets the refresh cookie.
+      description: Creates a user with no organization. Returns an access token (no `org` claim yet) and sets the refresh cookie (starts a new refresh-token family). Rate limited per IP (429, approved; thresholds ASSUMED). `409 EMAIL_TAKEN` is required by story F1-1 and is an account-enumeration oracle; the rate limit is the mitigation (ADR-004).
       x-features: [F1]
       x-roles: [public]
       security: []
@@ -86,6 +102,7 @@ paths:
         '201':
           description: User created and signed in.
           headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
             Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
           content:
             application/json:
@@ -117,6 +134,7 @@ paths:
         '200':
           description: Signed in.
           headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
             Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
           content:
             application/json:
@@ -133,20 +151,34 @@ paths:
     post:
       tags: [Auth]
       operationId: refreshToken
-      summary: Get a new access token using the refresh cookie
+      summary: Rotate the refresh cookie and get a new access token
       description: |
         **EXTRA, beyond story F1-1** (F1-1 puts session expiry out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
-        Reads the `refresh_token` cookie, returns a new access token and rotates the cookie. No request body. 401 if the cookie is missing, invalid or expired.
+        Reads the `refresh_token` cookie (no request body) and, in one database transaction:
+        1. verifies the JWT (`typ=refresh`) and finds the stored hash of its `jti` in `refresh_tokens`;
+        2. **reuse detection:** if that token was already rotated or revoked, the **whole token family is revoked**
+           and the answer is 401 (within `REFRESH_REUSE_LEEWAY_SECONDS`, default 10, of the rotation it answers 401
+           without revoking the family, to tolerate two tabs racing; the SPA also takes a cross-tab lock so
+           normally only one refresh runs);
+        3. rejects (401) a token that is expired or whose family is past the **absolute cap of 7 days from login**;
+        4. otherwise issues a new refresh token in the same family (expiry = login time + 7 days, never later),
+           marks the old one as rotated, and returns a new access token whose `org` claim is re-read from the
+           database (membership), not copied from the old token.
+        401 if the cookie is missing, invalid, expired, revoked or reused (the cookie is cleared).
+        Requires the CSRF guard header (see conventions). Rate limited (429, approved; thresholds ASSUMED).
       x-extra: true
       x-features: []
       x-roles: [public]
       security:
         - refreshCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfGuard'
       responses:
         '200':
           description: New access token issued, refresh cookie rotated.
           headers:
             Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthResponse' }
@@ -156,25 +188,34 @@ paths:
                 expires_in: 900
                 user: { id: 0192f1c0-0000-7000-8000-000000000001, email: ana@example.com, display_name: Ana }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /auth/logout:
     post:
       tags: [Auth]
       operationId: logout
-      summary: Log out (clears the refresh cookie)
+      summary: Log out (revokes the refresh-token family and clears the cookie)
       description: |
         **EXTRA, beyond story F1-1** (F1-1 puts logout out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
-        Clears the refresh cookie. Idempotent. The cookie is HttpOnly so only the server can clear it. Tokens are stateless, so an already issued access token stays valid until it expires (max 15 min), see ADR-002.
+        If the cookie holds a known refresh token, the **whole token family is revoked on the server**
+        (`revoked_reason = logout`), so a stolen copy of that cookie stops working; the cookie is then cleared.
+        Idempotent: without a cookie, or with an unknown or already revoked one, it still answers 204.
+        An access token that was already issued stays valid until it expires (max 15 minutes), see ADR-002.
+        Requires the CSRF guard header (see conventions). Not rate limited: the approved rate-limit scope is
+        signup, login, refresh and invite preview/accept.
       x-extra: true
       x-features: []
       x-roles: [public]
       security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfGuard'
       responses:
         '204':
-          description: Cookie cleared.
+          description: Family revoked (if any) and cookie cleared.
           headers:
-            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
-        '429': { $ref: '#/components/responses/RateLimited' }
+            Set-Cookie: { $ref: '#/components/headers/CookieCleared' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /auth/me:
     get:
       tags: [Auth]
@@ -186,6 +227,8 @@ paths:
       responses:
         '200':
           description: The signed-in user.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
@@ -202,7 +245,7 @@ paths:
       description: |
         Allowed only for a user without an organization (one organization per user in the MVP);
         otherwise 409 `ALREADY_IN_ORGANIZATION`. The response contains a **new access token that
-        includes the `org` claim**, and the refresh cookie is rotated. The client must replace its token.
+        includes the `org` claim**; the refresh cookie is not rotated (the `org` claim is re-read from the database on every refresh). The client must replace its access token. Per-user rate limit (429, ASSUMED thresholds).
       x-features: [F2]
       x-roles: [no-organization]
       requestBody:
@@ -215,7 +258,7 @@ paths:
         '201':
           description: Organization created; caller is admin.
           headers:
-            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrganizationSession' }
@@ -228,6 +271,7 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /organizations/current:
     get:
       tags: [Organizations]
@@ -239,6 +283,8 @@ paths:
       responses:
         '200':
           description: The current organization.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrganizationDetail' }
@@ -259,14 +305,17 @@ paths:
         Admin only. Each organization has exactly **one** persistent invite token (story F3-1, Orchestrator
         decision). The first call creates it (still answered 200); every later call by any admin of the
         organization returns the **same** token, and never creates a second one. The token is long
-        and random (32 random bytes, URL-safe base64, 43 characters) and valid for exactly one organization.
-        Revocation and regeneration are not in the MVP. The frontend builds the link as `<frontend-origin>/invite/<token>`.
+        and unpredictable (32 bytes, URL-safe base64, 43 characters) and valid for exactly one organization.
+        Revocation and regeneration are not in the MVP. The frontend builds the link as `<frontend-origin>/join#<token>` (fragment, ADR-003).
+        The token is derived server-side (HMAC of the organization id and a token version with a server key) and only its SHA-256 hash is stored, so it can be shown again without keeping it in clear (ADR-003).
         Members get 403 and no token is created; no token gives 401.
       x-features: [F3]
       x-roles: [admin]
       responses:
         '200':
           description: The organization's invite token.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Invite' }
@@ -275,45 +324,61 @@ paths:
                 created_at: '2026-10-27T18:35:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /invites/{token}:
-    get:
+  /invites/preview:
+    post:
       tags: [Invites]
       operationId: previewInvite
       summary: Preview an invite (public)
       description: |
-        Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown or malformed token returns 404 `INVITE_NOT_FOUND` (message `Invite link is invalid`), never 400. Rate limited (429, approved). The response is `Cache-Control: no-store` and the token must be redacted from logs (ADR-003).
+        Public, so the invited person can see which organization they would join before signing up.
+        The token is sent in the **request body**, never in the path or query (ADR-003). Returns only the
+        organization name. An unknown or malformed token returns 404 `INVITE_NOT_FOUND` (message
+        `Invite link is invalid`), never 400. No side effects (POST only to keep the token out of the URL).
+        Rate limited (429, approved; thresholds ASSUMED). `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [public]
       security: []
-      parameters:
-        - $ref: '#/components/parameters/InviteToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteTokenRequest' }
+            example: { token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw }
       responses:
         '200':
           description: Invite is valid.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InvitePreview' }
               example: { organization_name: Platform Team }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
-  /invites/{token}/accept:
+  /invites/accept:
     post:
       tags: [Invites]
       operationId: acceptInvite
       summary: Join the organization behind an invite as a member
       description: |
-        For a signed-in user without an organization. Creates a `member` membership. The invite is
-        not consumed. Returns a **new access token with the `org` claim** and rotates the refresh
-        cookie. 409 `ALREADY_IN_ORGANIZATION` if the user already belongs to an organization.
+        For a signed-in user without an organization. The token is sent in the **request body**, never in the
+        path or query (ADR-003). Creates a `member` membership. The invite is not consumed. Returns a **new access
+        token with the `org` claim**; the refresh cookie is not rotated. 409 `ALREADY_IN_ORGANIZATION` if the user
+        already belongs to an organization; 404 `INVITE_NOT_FOUND` for an unknown or malformed token.
+        Per-user rate limit (429, approved; thresholds ASSUMED). `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [no-organization]
-      parameters:
-        - $ref: '#/components/parameters/InviteToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteTokenRequest' }
+            example: { token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw }
       responses:
         '200':
           description: Joined the organization.
           headers:
-            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrganizationSession' }
@@ -326,6 +391,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /posts:
     get:
       tags: [Posts]
@@ -580,15 +646,24 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token (HS256, 15 min). Claims `sub`, `org`, `typ`, `iat`, `exp`, `jti`, `iss`, `aud` (ADR-002).
+      description: Access token (HS256, 15 min, `typ=access`). Claims `sub`, `org` (absent until an organization exists), `typ`, `iat`, `exp`, `jti`, `iss`, `aud` (ADR-002).
     refreshCookie:
       type: apiKey
       in: cookie
       name: refresh_token
-      description: HttpOnly refresh token cookie (7 days, Path=/api/v1/auth).
+      description: HttpOnly refresh token cookie (`typ=refresh`, stored server-side as a hash, rotated on use, absolute 7 days from login, Path=/api/v1/auth).
   headers:
     RefreshCookie:
-      description: '`refresh_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=604800` (cleared with Max-Age=0 on logout).'
+      description: '`refresh_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=<seconds left until login time + 7 days>` (at most 604800). `Secure` may be off only when `APP_ENV` is not `production`.'
+      schema:
+        type: string
+    NoStore:
+      description: '`no-store`. Responses carrying tokens or tenant data must not be cached.'
+      schema:
+        type: string
+        enum: [no-store]
+    CookieCleared:
+      description: '`refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=0`'
       schema:
         type: string
   parameters:
@@ -598,12 +673,12 @@ components:
       required: true
       schema: { type: string, format: uuid }
       example: 0192f1c0-0000-7000-8000-0000000000c1
-    InviteToken:
-      name: token
-      in: path
+    CsrfGuard:
+      name: X-Requested-With
+      in: header
       required: true
-      description: Long random invite token (32 random bytes, URL-safe base64; minimum 32 characters per story F3-1).
-      schema: { type: string, minLength: 32, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+      description: Must be exactly `feedback-board` (CSRF guard for the cookie endpoints, ADR-004). A missing or wrong value, or a different `Origin`, gives 403 `FORBIDDEN`.
+      schema: { type: string, enum: [feedback-board] }
   responses:
     ValidationError:
       description: 400 Request failed validation (bad body, query or path).
@@ -628,7 +703,7 @@ components:
           example:
             error: { code: UNAUTHENTICATED, message: Authentication required., details: [] }
     Forbidden:
-      description: '403 Caller is authenticated but not allowed (`FORBIDDEN` wrong role; `ORG_REQUIRED` no organization yet, **ASSUMED**: no story or brief text defines it).'
+      description: '403 Caller is authenticated but not allowed (`FORBIDDEN` wrong role, or a failed CSRF guard on `/auth/refresh` and `/auth/logout`; `ORG_REQUIRED` no organization yet, **ASSUMED**: no story or brief text defines it).'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -723,7 +798,7 @@ components:
       properties:
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, format: password, minLength: 8, maxLength: 128 }
-        display_name: { type: string, minLength: 1, maxLength: 80 }
+        display_name: { type: string, minLength: 1, maxLength: 80, description: 'Trim leading and trailing whitespace first, then validate the length 1-80; the trimmed value is stored.' }
     LoginRequest:
       type: object
       required: [email, password]
@@ -789,8 +864,14 @@ components:
       type: object
       required: [token, created_at]
       properties:
-        token: { type: string, description: 'The organization''s single persistent invite token. Secret: never log it.', minLength: 32, maxLength: 128 }
+        token: { type: string, description: 'The organization''s single persistent invite token. Secret: never log it. Only its hash is stored (ADR-003).', minLength: 32, maxLength: 128 }
         created_at: { type: string, format: date-time }
+    InviteTokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token: { type: string, maxLength: 512, description: 'The invite token from the URL fragment. Secret: never log it. Any value that is not a valid token gives 404, not 400.' }
     InvitePreview:
       type: object
       required: [organization_name]
