@@ -42,15 +42,16 @@ Current milestone: M0 - Foundation (plan approved by the human 2026-10-27)
 | TASK-037 | M1 acceptance run from a clean clone | qa-bot | TODO | 0 | - | 2026-10-27 | Planned, M1; approved; dispatch when blockers are DONE. Reviewers: qa-bot, Orchestrator (qa-bot cannot review its own task). Blocked by: TASK-034, TASK-035, TASK-036. |
 | TASK-038 | Release notes M1 | docs-bot | TODO | 0 | - | 2026-10-27 | Planned, M1; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-037. |
 | TASK-039 | Display name at signup and approved auth extras in the stories | ba-bot | DONE | 2 | PR #4 (merged) | 2026-10-27 | PR #4 merged, merge commit 2240765. |
-| TASK-040 | Align stories with the revised auth and invite design | ba-bot | IN_REVIEW | 5 | PR #5 (merged) + PR #6 (open) | 2026-10-27 | PR #5 merged, merge commit 057fb19; follow-up PR #6 open. |
+| TASK-040 | Align stories with the revised auth and invite design | ba-bot | IN_REVIEW | 5 | PR #5 (merged) + PR #6 (merged) | 2026-10-28 | PR #6 is already merged (merge commit 4a2e084, qa-bot post-merge APPROVE and security-bot PASS with Lows, no pre-merge review). A further docs follow-up PR from ba-bot is pending, so this stays IN_REVIEW. |
 
 Counts: M0 = 17 tasks (3 DONE, 1 in review, 1 in progress, 12 TODO), including follow-ups TASK-039 and TASK-040. M1 = 23 tasks (all TODO). Total 40. TASK-001 is merged and the plan is approved. TASK-003 is dispatched. Other tasks stay TODO until their blockers are DONE.
 
 ## Needs human
 - None right now. Approved 2026-10-27: brief, stack, plan; TypeScript 6.0.3; extra /auth/refresh and /auth/logout; display name at signup; rate limiting kept; standing OK for the Orchestrator to merge PRs that pass qa-bot review (and security-bot where required).
 ## Blocked
-- None. Open follow-ups, not blockers: TASK-001 Attempt 7 text fixes (see PR list); TASK-040 follow-up PR #6.
+- None. Open follow-ups, not blockers: TASK-001 Attempt 7 text fixes (see PR list); a further docs follow-up PR from ba-bot for TASK-040 is pending.
 ## Recently done
 - TASK-001, TASK-002 and TASK-039.
 ## Log
-- 2026-10-27: TASK-001 set DONE (PR #2 merged, merge commit 54f79e4; Attempt 7 follow-up open). TASK-002 set DONE from its merged PRs (PR #1 merge commit 0567ef4; PR #3 merge commit b495550). TASK-039 set DONE (PR #4 merged, merge commit 2240765). TASK-040 set IN_REVIEW (PR #5 merged, merge commit 057fb19; follow-up PR #6 open). TASK-003 dispatched IN_PROGRESS (Attempt 1, devops-bot).
+- 2026-10-27: TASK-001 set DONE (PR #2 merged, merge commit 54f79e4; Attempt 7 follow-up open). TASK-002 set DONE from its merged PRs (PR #1 merge commit 0567ef4; PR #3 merge commit b495550). TASK-039 set DONE (PR #4 merged, merge commit 2240765). TASK-040 set IN_REVIEW (PR #5 merged, merge commit 057fb19; PR #6 merged, merge commit 4a2e084, qa-bot post-merge APPROVE and security-bot PASS with Lows, no pre-merge review; a further docs follow-up PR from ba-bot is pending).
+- 2026-10-27: TASK-003 dispatched IN_PROGRESS (Attempt 1, devops-bot).
