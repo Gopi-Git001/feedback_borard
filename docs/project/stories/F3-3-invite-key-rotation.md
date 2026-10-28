@@ -28,7 +28,7 @@ Traces to the human-approved invite-token addition in brief.md and to the key-ro
 An admin "regenerate link" feature, expiry, revoking, removing members (all post-MVP, F3-1), the runbook text, JWT_SECRET rotation, how the key is stored and provisioned.
 
 ## Assumptions / Questions
-- Accepted risk R8 (TASK-040 handoff): the invite link has no expiry and no revoke, it stays valid until the key rotates, a rotation leaves a window (criteria 1 and 4) in which no link works until an admin opens "Invite", and all backends of a mixed fleet must be rotated together (ADR-003 rule 3).
+- Accepted risk R8 (ADR-004 section 7; the no-expiry, no-revoke part is also R6): the invite link has no expiry and no revoke, it stays valid until the key rotates, a rotation leaves a window (criteria 1 and 4) in which no link works until an admin opens "Invite", and all backends of a mixed fleet must be rotated together (ADR-003 rule 3).
 - ASSUMED: criteria 1 to 4 and 6 are backend tests that restart the app or set the key by environment variable (ADR-003 "Tests (qa-bot)" a to c); criterion 4 uses a token computed by the test with the new key.
 - The vector in criterion 6 is test data only and must never be used as a real key (ADR-003). I re-computed it with HMAC-SHA256 and SHA-256 and it matches.
 - ADR-003 is Proposed and security-bot must confirm the rotation rule (ADR-003 says so); if the rule changes, criteria 1 to 4 change.
