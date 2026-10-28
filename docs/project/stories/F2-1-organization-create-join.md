@@ -18,7 +18,7 @@ As a new user, I want to create an organization (and become its admin) or join o
 - A logged-out visitor who opens an invite link signs up or logs in first; the token is held in sessionStorage (key "pending_invite") meanwhile and the invite is applied afterwards (ADR-003; testable in F3-2 criterion 4). The page removes the fragment from the address bar after reading it (F3-2 criterion 3).
 - The creator of an organization is its admin; everyone who joins via an invite link is a member (brief roles).
 - Organization name length 1 to 60 characters after trimming (ASSUMED). Duplicate organization names are allowed, because isolation is by organization id (ASSUMED).
-- A request that creates an organization (POST /organizations) with a Content-Type whose media type is not "application/json" is answered 415 before authentication and before the per-user limiter of this endpoint (order: 415, 401, per-user 429, 400, 409; ADR-004 section 3, ASSUMED architect decision; F1-9, not a criterion of this story), and changes nothing.
+- A request that creates an organization (POST /organizations) with a Content-Type that the media-type rule of F1-9 refuses is answered 415 before authentication and before the per-user limiter of this endpoint (order: 415, 401, per-user 429, 400, 409; order fixed in ADR-004 section 3, an architect decision; F1-9, not a criterion of this story), and changes nothing.
 
 ## UI notes
 - A logged-in user with no organization sees two choices: "Create organization" (name field) or "Join with invite link" (ASSUMED labels).

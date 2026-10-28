@@ -16,7 +16,7 @@ As a member, I want to comment on a post, so that I can discuss the feedback wit
 - No one can edit or delete comments in the MVP (ASSUMED). The brief only says members cannot edit or delete posts and lists comment editing nowhere in the MVP; deleting a post (F9) removes its comments.
 - A comment belongs to one post and so to that post's organization.
 - A comment names its author by display name only; the email is never shown to other members (API contract).
-- A request that creates a comment with a Content-Type whose media type is not "application/json" is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
+- A request that creates a comment with a Content-Type that the media-type rule of F1-9 refuses is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
 
 ## UI notes
 - Comment list under the post, then a text box and "Add comment" button (ASSUMED label).

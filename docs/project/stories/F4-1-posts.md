@@ -17,7 +17,7 @@ As a member, I want to create a post with a title, description and type (idea or
 - Members cannot edit or delete posts (brief ASSUMED).
 - Every post belongs to exactly one organization, the author's.
 - A post names its author by display name only; the email is never shown to other members (API contract).
-- A request that creates a post with a Content-Type whose media type is not "application/json" is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
+- A request that creates a post with a Content-Type that the media-type rule of F1-9 refuses is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
 
 ## UI notes
 - "New post" form (ASSUMED label) with title, description, and a type selector (idea / bug).

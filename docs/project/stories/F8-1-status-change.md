@@ -15,7 +15,7 @@ As an admin, I want to move a post through New, Planned, In Progress and Done, s
 - Normal path is New to Planned to In Progress to Done; an admin may also move in any direction or skip steps (brief ASSUMED).
 - Only admins change status (brief role table).
 - Changing a post to its current status is accepted and changes nothing (ASSUMED).
-- A request that changes a status with a Content-Type whose media type is not "application/json" is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
+- A request that changes a status with a Content-Type that the media-type rule of F1-9 refuses is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
 
 ## UI notes
 - Admins see a status selector on the post page; members see the status as text only.
