@@ -15,7 +15,7 @@ Traces to brief feature F1 (sign-up with a password; password minimum 8 was ASSU
 
 ## Business rules
 - Password length 8 to 128 at sign-up; 1 to 128 at login (contract). No composition rules (ADR-002). Characters are counted as characters, tests use plain ASCII characters (ASSUMED; the contract does not say how multi-byte characters are counted).
-- The minimum 8 stays as the accepted decision although security guidance asks for more; see the accepted risks in the TASK-040 handoff.
+- The minimum 8 stays as the accepted decision although security guidance asks for more; see accepted risk R17 in ADR-004 section 7.
 - Passwords are never returned and never logged (brief, ADR-004; log checks are in F1-4).
 
 ## UI notes

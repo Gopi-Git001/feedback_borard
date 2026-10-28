@@ -27,7 +27,7 @@ As a user, I want to sign up and log in with my email and password, so that I ca
 - User: email, display name, password hash, created time, organization (empty until F2).
 
 ## Out of scope
-Password reset, email verification, social/SSO login, changing the display name after sign-up, avatars, account lockout and any per-account login limit (out of scope, not offered; accepted risks R1, R3 and R4, see the TASK-040 handoff: guessing against one account is limited only by the per-IP limit in F1-2, passwords have a minimum of 8 and there is no breached-password check).
+Password reset, email verification, social/SSO login, changing the display name after sign-up, avatars, account lockout and any per-account login limit (out of scope, not offered; accepted risks R1, R3, R4 and R17, see ADR-004 section 7: guessing against one account is limited only by the per-IP limit in F1-2, passwords have a minimum of 8 and there is no breached-password check, R17).
 
 ## Assumptions / Questions
 - Message texts "Email already registered" (contract: Conflict response, EMAIL_TAKEN) and "Invalid email or password" (contract: login operation description, INVALID_CREDENTIALS) are contract-sourced; the contract is still Proposed on PR #2 and the brief gives no wording. ASSUMED: the "create or join organization" step name; tests may match on any visible error message instead.
