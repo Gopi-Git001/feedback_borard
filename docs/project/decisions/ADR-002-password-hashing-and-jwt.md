@@ -20,7 +20,7 @@ Browser token storage:
 **Password hashing: Argon2id via argon2-cffi ~=25.1.0.**
 - Use `argon2.PasswordHasher.from_parameters(argon2.profiles.RFC_9106_LOW_MEMORY)`, i.e. Argon2id, time_cost=3, memory_cost=65536 KiB (64 MiB), parallelism=4, 16-byte random salt, 32-byte hash (the profile values; verified by running argon2-cffi 25.1.0 on 2026-10-27: `Parameters(type=ID, version=19, salt_len=16, hash_len=32, time_cost=3, memory_cost=65536, parallelism=4)`, five hashes took 40-65 ms each on the architect box; docs: "Choosing Parameters"). Backend-bot must confirm in its first test that one hash takes roughly 50-300 ms in the docker container and report if not; do not lower parameters without a new ADR.
 - Store the encoded string (it embeds algorithm, parameters and salt) in `users.password_hash`. On successful login call `check_needs_rehash()` and re-hash if parameters changed.
-- Password policy: min 10, max 128 characters, no composition rules; reject values over 128 (prevents hash-DoS). Never log or return the password or hash.
+- Password policy: min 8, max 128 characters (min 8 follows story F1-1; no composition rules, so longer passphrases are possible and encouraged in the UI), no composition rules; reject values over 128 (prevents hash-DoS). Never log or return the password or hash.
 - Login must run `verify` against a dummy hash when the email is unknown, so timing does not reveal which emails exist. Error is always `INVALID_CREDENTIALS` (401).
 
 **JWT: PyJWT ~=2.15.1, algorithm HS256 only** (the decode call must pass `algorithms=["HS256"]`; never read the algorithm from the token header).

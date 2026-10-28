@@ -39,7 +39,7 @@ Sources: brief.md features F1-F9 and ASSUMED list. Stories do not exist yet (ba-
 | Column | Type | Null | Default | Constraints / validation | Notes |
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | this is the tenant id |
-| name | varchar(100) | no | | length 1-100 after trim | |
+| name | varchar(60) | no | | length 1-60 after trim (story F2-1); duplicates allowed | |
 | created_by | uuid | no | | FK users(id) ON DELETE RESTRICT | audit |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | |
@@ -55,17 +55,16 @@ Sources: brief.md features F1-F9 and ASSUMED list. Stories do not exist yet (ba-
 | updated_at | timestamptz | no | now() | | |
 Also: `UNIQUE (organization_id, user_id)` (kept for the post-MVP multi-org change).
 
-### 3.4 invites (shareable link per organization; ASSUMED reusable, long random token)
+### 3.4 invites (exactly one persistent invite token per organization; story F3-1)
 | Column | Type | Null | Default | Constraints / validation | Notes |
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | |
-| organization_id | uuid | no | | FK organizations(id) ON DELETE CASCADE | tenant column |
-| token_hash | char(64) | no | | UNIQUE; hex SHA-256 of the token | **Secret-derived**; raw token (>= 32 random bytes, URL-safe base64) is shown to the admin once at creation and never stored |
+| organization_id | uuid | no | | FK organizations(id) ON DELETE CASCADE; **UNIQUE** | tenant column; UNIQUE = one invite token per organization |
+| token | varchar(64) | no | | UNIQUE; CHECK length(token) >= 32 | **Secret**: 32 random bytes, URL-safe base64 (43 chars). Stored as-is (not hashed) because admins must be shown the same link on every click (F3-1) |
 | created_by | uuid | no | | FK users(id) ON DELETE RESTRICT | audit; must be an admin of the org |
-| revoked_at | timestamptz | yes | NULL | | reserved: revocation is not in the MVP, column exists so adding it needs no migration; an invite with `revoked_at IS NOT NULL` is treated as not found |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | |
-Accepting an invite does not consume it (reusable until revoked, per brief). Lookup is by `token_hash` (public endpoint, so it is the one lookup without a tenant filter; it resolves the tenant, it does not read tenant data beyond the org name).
+Accepting an invite does not consume it (reusable; revocation is not in the MVP). Creation is get-or-create: `INSERT ... ON CONFLICT (organization_id) DO NOTHING` then `SELECT`, so two admins clicking at once still yield one token. Lookup is by `token` (public endpoint, so it is the one lookup without a tenant filter; it resolves the tenant, it does not read tenant data beyond the org name).
 
 ### 3.5 posts
 | Column | Type | Null | Default | Constraints / validation | Notes |
@@ -73,8 +72,8 @@ Accepting an invite does not consume it (reusable until revoked, per brief). Loo
 | id | uuid | no | uuidv7() | PK | |
 | organization_id | uuid | no | | FK organizations(id) ON DELETE CASCADE | tenant column |
 | author_id | uuid | no | | FK users(id) ON DELETE RESTRICT | audit |
-| title | varchar(140) | no | | length 1-140 after trim | |
-| description | text | no | '' | length 0-5000 | |
+| title | varchar(120) | no | | length 1-120 after trim (story F4-1) | |
+| description | varchar(2000) | no | | length 1-2000 after trim (story F4-1: required) | |
 | type | text | no | | CHECK type IN ('idea','bug') | |
 | status | text | no | 'New' | CHECK status IN ('New','Planned','In Progress','Done') | admin may set any value in any direction (ASSUMED) |
 | vote_count | integer | no | 0 | CHECK vote_count >= 0 | denormalised count of `votes` rows; changed only in the same transaction that inserts/deletes a vote |
@@ -101,7 +100,7 @@ Constraint: **`UNIQUE (user_id, post_id)`** (acceptance criterion). Add-vote is 
 | organization_id | uuid | no | | part of composite FK | tenant column |
 | post_id | uuid | no | | composite FK `(organization_id, post_id)` -> posts(organization_id, id) ON DELETE CASCADE | |
 | author_id | uuid | no | | FK users(id) ON DELETE RESTRICT | audit |
-| body | varchar(2000) | no | | length 1-2000 after trim | |
+| body | varchar(1000) | no | | length 1-1000 after trim (story F6-1) | |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | members cannot edit comments (not in MVP) |
 
@@ -139,9 +138,8 @@ erDiagram
     invites {
         uuid id PK
         uuid organization_id FK
-        char token_hash UK
+        varchar token UK
         uuid created_by FK
-        timestamptz revoked_at
     }
     posts {
         uuid id PK
@@ -177,7 +175,7 @@ Every foreign key and every query in brief F1-F9 is covered. PostgreSQL does not
 | users | UNIQUE (lower(email)) | login lookup, signup uniqueness (F1) |
 | organizations | PK (id); (created_by) | FK |
 | memberships | UNIQUE (user_id); UNIQUE (organization_id, user_id); (organization_id) | resolve user's org and role on each request; FK |
-| invites | UNIQUE (token_hash); (organization_id); (created_by) | preview/accept by token (F2, F3); FK |
+| invites | UNIQUE (token); UNIQUE (organization_id); (created_by) | preview/accept by token (F2, F3); FK |
 | posts | UNIQUE (organization_id, id); (organization_id, vote_count DESC, created_at DESC, id DESC); (organization_id, type, vote_count DESC, created_at DESC, id DESC); (organization_id, status, vote_count DESC, created_at DESC, id DESC); (author_id) | board sorted by votes (F7), filter by type and/or status, keyset pagination on (vote_count, created_at, id), FK |
 | votes | UNIQUE (user_id, post_id); (organization_id, post_id) | one vote per user per post (F5); "has voted" for a page of posts; FK |
 | comments | (organization_id, post_id, created_at, id); (author_id) | comment list per post oldest first (F6); FK |
@@ -190,7 +188,7 @@ Filter combining both type and status uses the status index and filters type in 
 | users.password_hash | secret | Argon2id (ADR-002); never selected into API models; never logged |
 | users.email | PII | unique, lower-cased; returned only to the owner (`/auth/me`) and, in invite/comment/post author objects, **not** returned (only `id` + `display_name`); not logged in clear in error logs |
 | users.display_name | PII (low) | shown to members of the same organization only |
-| invites.token_hash | secret-derived | only SHA-256 stored; raw token shown once at creation; compared in constant time |
+| invites.token | secret (bearer link) | stored in clear because F3-1 requires showing the same link again; returned only to admins of that org (`POST /organizations/current/invite`) and used as the lookup key by the public preview/accept; never logged; 256-bit random so lookup timing is not a practical oracle; encrypting at rest is a possible follow-up |
 | JWT secret | secret | env var `JWT_SECRET`, never in the database or repo |
 | Payment data | n/a | none: free product, no billing |
 Backups and logs must not contain raw tokens or passwords. Structured logs record admin actions (status change, delete: actor id, organization id, post id, timestamp) for auditability; a persistent audit table is a follow-up (section 8).
@@ -198,13 +196,16 @@ Backups and logs must not contain raw tokens or passwords. Structured logs recor
 ## 7. Migration and compatibility notes
 - Initial schema = one Alembic revision `0001_initial` creating all tables, constraints and indexes above (backend-bot, not architect-bot).
 - Planned change "multiple organizations per user" (post-MVP): drop `UNIQUE (user_id)` on `memberships`; JWT `org` becomes the selected org; no data migration needed. Needs an ADR and a contract version bump.
-- Revocable invites: `invites.revoked_at` already exists; only an endpoint is needed.
+- Revocable / regenerable invite (out of MVP per F3-1): needs a new column or dropping `UNIQUE (organization_id)` plus an endpoint; needs an ADR.
 - Any change to this approved model needs an ADR and Orchestrator go-ahead (architect rules).
 
 ## 8. Open questions / follow-ups
 - Audit log table (who changed status or deleted what) is not in the brief; recommended as a later task.
 - PostgreSQL RLS as defence in depth (section 1, point 5).
-- Description required or optional: modelled as optional (default empty string); the brief says the post has a description. Confirm with the Orchestrator/product owner if it must be non-empty.
+- Invite model follows story F3-1 (one persistent token per organization, shown again on every click); this replaces my first design (many hashed tokens, shown once).
+- Description is required (1-2000 characters) per story F4-1; limits for name/title/description/comment follow the stories, which are ASSUMED numbers there.
 
 ## Change log
 - 2026-10-27: initial model for TASK-001 (architect-bot).
+- 2026-10-27: field limits aligned to TASK-002 stories (org name 60, title 120, description required 2000, comment 1000).
+- 2026-10-27: invites changed to one persistent plain token per organization after TASK-002 story F3-1 landed (token_hash and revoked_at removed, UNIQUE (organization_id) added).

@@ -19,9 +19,11 @@ info:
       403 forbidden (known resource type, wrong role, or no organization yet), 404 not found (including
       other-organization resources), 409 conflict, 422 business-rule violation, 429 rate limited.
       FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`.
+    - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). `email` is compared case-insensitively.
     - **Error body** for every non-2xx: `{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`.
-    - **Pagination:** every list uses `limit` (1-100, default 20) and an opaque `cursor`; the response
-      has `items` and `next_cursor` (`null` on the last page). Treat the cursor as an opaque string.
+    - **No pagination in the MVP** (stories F7-1 and F6-1: all matching posts / comments are returned in one
+      response). Lists are wrapped as `{ "items": [...] }` so that `next_cursor` can be added later without
+      breaking clients. Adding pagination is a follow-up that needs a contract version bump.
     - **Auth:** `Authorization: Bearer <access_token>` (15 min). The refresh token lives in an
       HttpOnly cookie `refresh_token` (7 days, `Path=/api/v1/auth`) and is never visible to JavaScript.
     - Users who have no organization yet (just signed up) may call only: auth endpoints,
@@ -82,7 +84,7 @@ paths:
       tags: [Auth]
       operationId: login
       summary: Log in with email and password
-      description: Always answers `INVALID_CREDENTIALS` (401) for a wrong password or unknown email. Sets the refresh cookie. The access token carries `org` if the user belongs to an organization.
+      description: Always answers `INVALID_CREDENTIALS` (401, message exactly `Invalid email or password`) for a wrong password or unknown email. Sets the refresh cookie. The access token carries `org` if the user belongs to an organization.
       x-features: [F1]
       x-roles: [public]
       security: []
@@ -223,22 +225,27 @@ paths:
                 role: admin
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /invites:
+  /organizations/current/invite:
     post:
       tags: [Invites]
-      operationId: createInvite
-      summary: Create an invite link for the caller's organization
-      description: Admin only. Returns the raw `token` **once**; only its hash is stored. The link is reusable until revoked (revocation is not in the MVP). The frontend builds the link as `<frontend-origin>/invite/<token>`.
+      operationId: getOrCreateInvite
+      summary: Get (or create on first use) the organization's single invite token
+      description: |
+        Admin only. Each organization has exactly **one** persistent invite token (story F3-1, Orchestrator
+        decision). The first call creates it (still answered 200); every later call by any admin of the
+        organization returns the **same** token, and never creates a second one. The token is long
+        and random (32 random bytes, URL-safe base64, 43 characters) and valid for exactly one organization.
+        Revocation and regeneration are not in the MVP. The frontend builds the link as `<frontend-origin>/invite/<token>`.
+        Members get 403 and no token is created; no token gives 401.
       x-features: [F3]
       x-roles: [admin]
       responses:
-        '201':
-          description: Invite created.
+        '200':
+          description: The organization's invite token.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Invite' }
               example:
-                id: 0192f1c0-0000-7000-8000-0000000000b1
                 token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw
                 created_at: '2026-10-27T18:35:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -248,7 +255,7 @@ paths:
       tags: [Invites]
       operationId: previewInvite
       summary: Preview an invite (public)
-      description: Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown or revoked token returns 404 `INVITE_NOT_FOUND`. Rate limited.
+      description: Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown token returns 404 `INVITE_NOT_FOUND`. Rate limited.
       x-features: [F2, F3]
       x-roles: [public]
       security: []
@@ -299,10 +306,10 @@ paths:
       operationId: listPosts
       summary: List posts of the caller's organization, most votes first
       description: |
-        Sorted by `vote_count` descending, then `created_at` descending, then `id` descending
-        (stable order). Optional filters `type` and `status` can be combined. Cursor pagination:
-        because votes change between requests, a post can occasionally appear on two pages or be
-        skipped; clients should de-duplicate by `id`.
+        Sorted by `vote_count` descending, then `created_at` descending (newest first), then `id` descending
+        (stable order). Optional filters `type` and `status` combine with AND; a value outside the
+        allowed lists is rejected with 400 `VALIDATION_ERROR` (story F7-1). All matching posts are
+        returned in one response (no pagination in the MVP). An empty board returns `items: []`.
       x-features: [F7]
       x-roles: [admin, member]
       parameters:
@@ -314,11 +321,9 @@ paths:
           in: query
           required: false
           schema: { $ref: '#/components/schemas/PostStatus' }
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: One page of posts.
+          description: All matching posts.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PostPage' }
@@ -335,7 +340,6 @@ paths:
                     author: { id: 0192f1c0-0000-7000-8000-000000000001, display_name: Ana }
                     created_at: '2026-10-27T18:40:00Z'
                     updated_at: '2026-10-27T19:00:00Z'
-                next_cursor: eyJ2Ijo3LCJjIjoiMjAyNi0xMC0yN1QxODo0MDowMFoiLCJpIjoiMDE5MmYxYzAifQ
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -460,11 +464,18 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /posts/{post_id}/vote:
-    put:
+    post:
       tags: [Votes]
-      operationId: addVote
-      summary: Upvote a post (one per user per post)
-      description: Idempotent. If the caller already voted, nothing changes and the current state is returned with 200 (no 409). Uniqueness is enforced by `UNIQUE (user_id, post_id)`.
+      operationId: toggleVote
+      summary: Toggle the caller's upvote on a post
+      description: |
+        Story F5-1: a first call adds the caller's vote; a second call by the same user removes it
+        (so a repeated identical request toggles, it never creates a second vote). The caller can
+        never have more than one vote per post: `UNIQUE (user_id, post_id)` in the database, with
+        the insert/delete and the `vote_count` update in one transaction. Concurrent double clicks
+        must not produce a 500: a unique violation is treated as "already voted" and resolved to
+        the toggle result. Always returns 200 with the resulting state. A post in another
+        organization (or a missing post) returns 404 `POST_NOT_FOUND` and changes nothing.
       x-features: [F5]
       x-roles: [admin, member]
       parameters:
@@ -480,26 +491,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-    delete:
-      tags: [Votes]
-      operationId: removeVote
-      summary: Remove the caller's upvote
-      description: Idempotent. If the caller has no vote, nothing changes and the current state is returned with 200.
-      x-features: [F5]
-      x-roles: [admin, member]
-      parameters:
-        - $ref: '#/components/parameters/PostId'
-      responses:
-        '200':
-          description: Vote state after the call.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/VoteState' }
-              example: { post_id: 0192f1c0-0000-7000-8000-0000000000c1, vote_count: 7, has_voted: false }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
   /posts/{post_id}/comments:
     get:
       tags: [Comments]
@@ -510,11 +501,9 @@ paths:
       x-roles: [admin, member]
       parameters:
         - $ref: '#/components/parameters/PostId'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: One page of comments.
+          description: All comments of the post, oldest first.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CommentPage' }
@@ -525,7 +514,6 @@ paths:
                     body: Would love this too.
                     author: { id: 0192f1c0-0000-7000-8000-000000000002, display_name: Ben }
                     created_at: '2026-10-27T18:50:00Z'
-                next_cursor: null
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -588,22 +576,11 @@ components:
       name: token
       in: path
       required: true
-      description: Long random invite token (at least 32 random bytes, URL-safe base64).
+      description: Long random invite token (32 random bytes, URL-safe base64; minimum 32 characters per story F3-1).
       schema: { type: string, minLength: 32, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
-    Limit:
-      name: limit
-      in: query
-      required: false
-      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
-    Cursor:
-      name: cursor
-      in: query
-      required: false
-      description: Opaque cursor from `next_cursor` of the previous page.
-      schema: { type: string, maxLength: 512 }
   responses:
     ValidationError:
-      description: 400 Request failed validation (bad body, query, path or cursor).
+      description: 400 Request failed validation (bad body, query or path).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -612,7 +589,7 @@ components:
               code: VALIDATION_ERROR
               message: Request validation failed.
               details:
-                - { field: title, message: 'String should have at most 140 characters' }
+                - { field: title, message: 'String should have at most 120 characters' }
     Unauthorized:
       description: 401 Missing, invalid or expired token, or wrong credentials (`UNAUTHENTICATED`, `INVALID_CREDENTIALS`).
       headers:
@@ -632,19 +609,19 @@ components:
           example:
             error: { code: FORBIDDEN, message: Admin role required., details: [] }
     NotFound:
-      description: 404 Resource does not exist **or belongs to another organization** (`POST_NOT_FOUND`, `INVITE_NOT_FOUND`). The two cases are indistinguishable.
+      description: 404 Resource does not exist **or belongs to another organization** (`POST_NOT_FOUND`, `INVITE_NOT_FOUND`). The two cases are indistinguishable. For an invite the message is `Invite link is invalid` (story F2-1).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
           example:
             error: { code: POST_NOT_FOUND, message: Post not found., details: [] }
     Conflict:
-      description: 409 State conflict (`EMAIL_TAKEN`, `ALREADY_IN_ORGANIZATION`).
+      description: 409 State conflict (`EMAIL_TAKEN` with message `Email already registered`; `ALREADY_IN_ORGANIZATION` with message `You already belong to an organization`, for creating or joining an organization when the user already has one, story F2-1).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
           example:
-            error: { code: EMAIL_TAKEN, message: An account with this email already exists., details: [] }
+            error: { code: EMAIL_TAKEN, message: Email already registered, details: [] }
     RateLimited:
       description: 429 Too many requests (`RATE_LIMITED`).
       headers:
@@ -720,7 +697,7 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email, maxLength: 254 }
-        password: { type: string, format: password, minLength: 10, maxLength: 128 }
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
         display_name: { type: string, minLength: 1, maxLength: 80 }
     LoginRequest:
       type: object
@@ -742,7 +719,7 @@ components:
       required: [id, name, created_at]
       properties:
         id: { type: string, format: uuid }
-        name: { type: string, minLength: 1, maxLength: 100 }
+        name: { type: string, minLength: 1, maxLength: 60 }
         created_at: { type: string, format: date-time }
     OrganizationDetail:
       allOf:
@@ -757,7 +734,7 @@ components:
       required: [name]
       additionalProperties: false
       properties:
-        name: { type: string, minLength: 1, maxLength: 100 }
+        name: { type: string, minLength: 1, maxLength: 60 }
     OrganizationSession:
       type: object
       description: Result of creating or joining an organization. Contains a new access token that carries the `org` claim.
@@ -785,10 +762,9 @@ components:
           description: '`null` while the user has no organization.'
     Invite:
       type: object
-      required: [id, token, created_at]
+      required: [token, created_at]
       properties:
-        id: { type: string, format: uuid }
-        token: { type: string, description: 'Shown only in this response; only a hash is stored.', minLength: 32, maxLength: 128 }
+        token: { type: string, description: 'The organization''s single persistent invite token. Secret: never log it.', minLength: 32, maxLength: 128 }
         created_at: { type: string, format: date-time }
     InvitePreview:
       type: object
@@ -797,11 +773,11 @@ components:
         organization_name: { type: string }
     CreatePostRequest:
       type: object
-      required: [title, type]
+      required: [title, description, type]
       additionalProperties: false
       properties:
-        title: { type: string, minLength: 1, maxLength: 140 }
-        description: { type: string, maxLength: 5000, default: '' }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, minLength: 1, maxLength: 2000 }
         type: { $ref: '#/components/schemas/PostType' }
     UpdatePostStatusRequest:
       type: object
@@ -814,8 +790,8 @@ components:
       required: [id, title, description, type, status, vote_count, comment_count, has_voted, author, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
-        title: { type: string, minLength: 1, maxLength: 140 }
-        description: { type: string, maxLength: 5000 }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, minLength: 1, maxLength: 2000 }
         type: { $ref: '#/components/schemas/PostType' }
         status: { $ref: '#/components/schemas/PostStatus' }
         vote_count: { type: integer, minimum: 0 }
@@ -826,14 +802,11 @@ components:
         updated_at: { type: string, format: date-time }
     PostPage:
       type: object
-      required: [items, next_cursor]
+      required: [items]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/Post' }
-        next_cursor:
-          type: string
-          nullable: true
     VoteState:
       type: object
       required: [post_id, vote_count, has_voted]
@@ -846,23 +819,20 @@ components:
       required: [body]
       additionalProperties: false
       properties:
-        body: { type: string, minLength: 1, maxLength: 2000 }
+        body: { type: string, minLength: 1, maxLength: 1000 }
     Comment:
       type: object
       required: [id, post_id, body, author, created_at]
       properties:
         id: { type: string, format: uuid }
         post_id: { type: string, format: uuid }
-        body: { type: string, minLength: 1, maxLength: 2000 }
+        body: { type: string, minLength: 1, maxLength: 1000 }
         author: { $ref: '#/components/schemas/UserPublic' }
         created_at: { type: string, format: date-time }
     CommentPage:
       type: object
-      required: [items, next_cursor]
+      required: [items]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/Comment' }
-        next_cursor:
-          type: string
-          nullable: true
