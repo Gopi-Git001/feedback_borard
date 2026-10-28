@@ -1,5 +1,5 @@
 # ADR-002: Password hashing (Argon2id) and JWT approach
-Status: Proposed (attempt 3: rate limits aligned to the approved 10 per 60 s per IP, per-account limit and account lockout out of scope and not offered, per-family locking, APP_ENV fail-closed; revised in attempt 2b after the security-bot review of PR #2; the refresh-token section **reverses** the Attempt 2 decision "stateless refresh tokens, no revocation in the MVP")
+Status: Accepted. Basis: Gopi approved the brief, stack and plan in chat on 2026-10-27 (relayed by the Orchestrator; reviewers have not verified it). It does not approve R7, A4-4 for the register rows that are not re-confirmed, or any rule labelled ASSUMED (ADR-004 section 7). Review state of the specs: ADR-004 section 7. Earlier notes: (attempt 3: rate limits aligned to the approved 10 per 60 s per IP, per-account limit and account lockout out of scope and not offered, per-family locking, APP_ENV fail-closed; revised in attempt 2b after the security-bot review of PR #2; the refresh-token section **reverses** the Attempt 2 decision "stateless refresh tokens, no revocation in the MVP")
 Date: 2026-10-27   Deciders: architect-bot (proposes), Orchestrator (approves)
 
 ## Context
