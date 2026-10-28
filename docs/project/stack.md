@@ -1,0 +1,80 @@
+# Stack: pinned versions (Team Feedback Board)
+
+Status: Proposed (awaiting Orchestrator approval) | Owner: architect-bot | Task: TASK-001
+Date checked: **2026-10-27** (America/Chicago). Every version below was fetched live on that date from the source in the last column, not from memory.
+
+The stack itself is **pre-approved** (brief.md, Constraints). Alternatives were not compared. This file only verifies and pins versions.
+
+## Rules for using this file
+- Pin **major.minor** in code and CI, with the exact verified patch as a lower bound. Use a lock file (`uv.lock` / `package-lock.json`) so installs are reproducible.
+- Python packages: use compatible-release pins (`~=`). For 0.x packages (FastAPI, Uvicorn) the minor version is treated as breaking, so `~=0.162.0` means "0.162.x only".
+- No beta / RC / dev / canary / EOL versions anywhere. Verified: every version below is a plain stable release (no `rc`, `beta`, `dev`, `canary`, `pre` suffix) and none is yanked or deprecated on its registry.
+- Changing any pin needs an ADR (supersede ADR-001) and Orchestrator go-ahead.
+
+## Runtime and infrastructure
+
+| Component | Pinned (major.minor) | Exact verified version | Last release date | Support status | Source (official) |
+|---|---|---|---|---|---|
+| Python | **3.14** | 3.14.10 | 2026-10-25 | bugfix; supported until 2030-10 | https://www.python.org/downloads/ (cross-check https://endoflife.date/api/python.json) |
+| PostgreSQL | **18** | 18.6 | 2026-08-13 | supported; final release 2030-11-14 | https://www.postgresql.org/support/versioning/ and https://www.postgresql.org/docs/release/18.6/ |
+| PostgreSQL Docker image | `postgres:18.6-alpine` | tag exists, rebuilt 2026-10-26 | n/a | follows PostgreSQL 18.6 | https://hub.docker.com/v2/repositories/library/postgres/tags/18.6-alpine |
+| Node.js | **24 (LTS "Krypton")** | 24.22.1 | 2026-10-20 | LTS; EOL 2028-04-30 | https://nodejs.org/en/about/previous-releases, https://nodejs.org/dist/index.json (cross-check https://endoflife.date/api/nodejs.json) |
+| Docker Compose | **v5.6** | v5.6.1 | 2026-10-21 | current release | https://github.com/docker/compose/releases/tag/v5.6.1 |
+| GitHub Actions runner | `ubuntu-24.04` | n/a (GA image label; `ubuntu-latest` = 24.04 today) | n/a | GA | https://github.com/actions/runner-images (README, checked 2026-10-27) |
+| actions/checkout | **v7** | v7.0.1 | 2026-07-20 | current | https://github.com/actions/checkout/releases/tag/v7.0.1 |
+| actions/setup-python | **v7** | v7.1.0 | 2026-10-22 | current | https://github.com/actions/setup-python/releases/tag/v7.1.0 |
+| actions/setup-node | **v7** | v7.1.0 | 2026-10-08 | current | https://github.com/actions/setup-node/releases/tag/v7.1.0 |
+| actions/upload-artifact | **v7** | v7.0.2 | 2026-10-07 | current | https://github.com/actions/upload-artifact/releases/tag/v7.0.2 |
+
+## Backend (Python 3.14)
+
+| Package | Pinned | Exact verified version | Last release date | Source (official registry / repo) |
+|---|---|---|---|---|
+| FastAPI | `~=0.162.0` | 0.162.0 | 2026-10-23 | https://pypi.org/pypi/fastapi/json , https://github.com/fastapi/fastapi/releases/tag/0.162.0 |
+| Pydantic | `~=2.14.1` | 2.14.1 | 2026-10-11 | https://pypi.org/pypi/pydantic/json |
+| pydantic-settings | `~=2.16.1` | 2.16.1 | 2026-10-20 | https://pypi.org/pypi/pydantic-settings/json |
+| Uvicorn (`uvicorn[standard]`) | `~=0.54.0` | 0.54.0 | 2026-09-25 | https://pypi.org/pypi/uvicorn/json |
+| SQLAlchemy | `~=2.1.6` | 2.1.6 (2.1.0 GA was 2026-09-24) | 2026-10-21 | https://pypi.org/pypi/sqlalchemy/json |
+| Alembic | `~=1.20.1` | 1.20.1 | 2026-10-22 | https://pypi.org/pypi/alembic/json |
+| psycopg (`psycopg[binary]`) | `~=3.3.6` | 3.3.6 (cp314 wheels published) | 2026-09-18 | https://pypi.org/pypi/psycopg/json , https://pypi.org/pypi/psycopg-binary/json |
+| argon2-cffi (password hashing, ADR-002) | `~=25.1.0` | 25.1.0 | 2025-06-03 (see note 1) | https://pypi.org/pypi/argon2-cffi/json , https://argon2-cffi.readthedocs.io/en/stable/ |
+| PyJWT (JWT, ADR-002) | `~=2.15.1` | 2.15.1 | 2026-09-28 | https://pypi.org/pypi/pyjwt/json , https://github.com/jpadilla/pyjwt/releases/tag/2.15.1 |
+| email-validator (for Pydantic `EmailStr`) | `~=2.3.0` | 2.3.0 | 2025-08-26 (see note 2) | https://pypi.org/pypi/email-validator/json |
+| pytest | `~=9.2.0` | 9.2.0 | 2026-10-27 | https://pypi.org/pypi/pytest/json |
+| httpx (FastAPI `TestClient`, tests only) | `~=0.28.1` | 0.28.1 | 2024-12-06 (see note 3) | https://pypi.org/pypi/httpx/json |
+
+Compatibility checked from registry metadata (`requires_python`, `requires_dist`): FastAPI 0.162.0 needs Python >=3.10 and Pydantic >=2.9; SQLAlchemy 2.1.6 needs Python >=3.11; Alembic 1.20.1 needs SQLAlchemy >=2.0; PyJWT 2.15.1 needs Python >=3.9. All are satisfied by Python 3.14 and the pins above. Binary wheels for cp314 exist for psycopg-binary 3.3.6, pydantic-core 2.50.1 and argon2-cffi-bindings 26.1.0.
+
+## Frontend (Node 24 LTS)
+
+| Package | Pinned | Exact verified version | Last release date | Source (npm registry) |
+|---|---|---|---|---|
+| React / react-dom | `~19.3.1` | 19.3.1 | 2026-10-14 | https://registry.npmjs.org/react/latest , https://registry.npmjs.org/react-dom/latest |
+| TypeScript | `~6.0.3` (see note 4) | 6.0.3 | 2026-04-16 | https://registry.npmjs.org/typescript (version 6.0.3) |
+| Vite | `~8.3.5` | 8.3.5 | 2026-10-21 | https://registry.npmjs.org/vite/latest (requires Node ^20.19 or >=22.12) |
+| @vitejs/plugin-react | `~6.1.2` | 6.1.2 | 2026-10-05 | https://registry.npmjs.org/@vitejs/plugin-react/latest (peer: vite ^8) |
+| React Router (`react-router`; see note 5) | `~8.5.1` | 8.5.1 | 2026-10-27 | https://registry.npmjs.org/react-router/latest (requires Node >=22.22) |
+| TanStack Query (data fetching, proposed) | `~5.105.0` | 5.105.0 | 2026-10-26 | https://registry.npmjs.org/@tanstack/react-query/latest |
+| Vitest (unit tests, proposed) | `~5.0.5` | 5.0.5 | 2026-10-15 | https://registry.npmjs.org/vitest/latest (requires Node ^22.12 or ^24 or >=26) |
+| ESLint | `~10.13.0` | 10.13.0 | 2026-10-16 | https://registry.npmjs.org/eslint/latest |
+| typescript-eslint | `~8.72.1` | 8.72.1 | 2026-10-26 | https://registry.npmjs.org/typescript-eslint/latest (peer: typescript >=4.8.4 <6.1.0) |
+| @types/react, @types/react-dom | `~19.3.0` | 19.3.0 | 2026-09-09 | https://registry.npmjs.org/@types/react/latest |
+| @playwright/test (e2e) | `~1.64.1` | 1.64.1 | 2026-10-14 | https://registry.npmjs.org/@playwright/test/latest , https://github.com/microsoft/playwright/releases/tag/v1.64.1 |
+
+## Authentication (built-in, no external service)
+Password hashing: **argon2-cffi 25.1.0 (Argon2id)**. Tokens: **PyJWT 2.15.1, HS256**. Details and parameters in ADR-002.
+
+## Notes and exceptions (honest flags)
+1. **argon2-cffi** last release is 2025-06-03, older than the 12-month freshness rule in tech-research. It is not abandoned: the repository had a commit on 2026-10-01 (https://github.com/hynek/argon2-cffi), there is no deprecation notice, and it is the Argon2 binding that the pwdlib package (0.3.1, 2026-08-12) wraps via its `argon2` extra (PyPI metadata). bcrypt 5.0.0 (2025-09-25) is also older than 12 months, so neither option passes the rule; argon2 was chosen on merit (ADR-002). Accepted exception, flagged for the Orchestrator.
+2. **email-validator** 2.3.0 is from 2025-08-26 (older than 12 months by 2026-08-26). Repository active (commit 2026-10-15). Accepted exception; it is a transitive requirement of Pydantic `EmailStr`.
+3. **httpx** 0.28.1 (2024-12-06) is the latest *stable* release; only `1.0.dev*` pre-releases exist after it, and those are forbidden. Last repo commit 2026-02-23. Used only in tests. Accepted exception.
+4. **TypeScript 6.0.3, not 7.0.2.** TypeScript 7.0.2 (2026-07-08) is the current `latest` on npm and is stable. It is **not pinned** because typescript-eslint 8.72.1 (the current release) declares peer `typescript >=4.8.4 <6.1.0`, so TS 7 would break the lint step required by the frontend checks in CI. 6.0.3 is the last 6.x release and is not deprecated. Revisit when typescript-eslint supports TS 7 (new ADR).
+5. **React Router**: the `latest` tag of `react-router` is 8.5.1; `react-router-dom` is only published as the 7.x line (latest 7.18.5, dist-tag `latest`). Pin the single `react-router` package at 8.5.1 and import everything from `react-router`. frontend-bot should confirm library-mode (SPA, `createBrowserRouter`) usage against https://reactrouter.com when building; if it differs, report to the Orchestrator rather than switch silently.
+6. **Python 3.15** (3.15.2, 2026-10-25; first released 2026-10-09) is also stable, and cp315 wheels exist for the key packages. 3.14 is pinned because it was released a year ago (2025-10-07) and has had ten patch releases (3.14.1 to 3.14.10); upgrade to 3.15 in a later, separate task.
+7. **Node 26** (26.12.1) is "Current" today and becomes LTS on 2026-10-28 (endoflife.date). Node 24 is pinned because it is the Active LTS today, supported to 2028-04-30; Node 22 is also still LTS.
+8. **SQLAlchemy 2.1** went GA only on 2026-09-24 (about a month before this check). Fallback: SQLAlchemy 2.0.55 (2026-10-16), which Alembic 1.20.1 also supports. See ADR-001 consequences.
+9. Playwright browsers are installed by `npx playwright install --with-deps` in CI; browser build versions follow the pinned `@playwright/test`.
+10. Do not add the legacy top-level `version:` key to compose files.
+
+## Change log
+- 2026-10-27: initial pinned set (TASK-001, architect-bot).
