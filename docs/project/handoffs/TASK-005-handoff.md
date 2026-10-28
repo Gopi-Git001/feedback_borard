@@ -39,7 +39,7 @@ npm run lint
 npm run test
 npm run build
 ```
-The evidence run used Node 24.22.1 (the stack pin). `frontend/package.json` has no `engines` field, so the package does not accept or reject a Node version. react-router 8.5.1 needs a newer Node than 20 (`npm view react-router@8.5.1 engines` is `{"node":">=22.22.0"}`). This VM's default `node` on `PATH` was v22.23.4 (`/exec-daemon/node`); the evidence run put `~/.nvm/versions/node/v24.22.1/bin` first.
+Use Node 24.22.1 (the project pin); the dependencies together accept 22.22+, 24.x and 26+. `frontend/package.json` has no `engines` field, so the package does not enforce that. The evidence run used Node 24.22.1.
 
 ## Test results
 Environment: Node v24.22.1, npm 11.19.1 (the npm that ships with that Node). `npm install` that wrote `package-lock.json` was the VM's npm 10.9.9. Lockfile was not rewritten by the later script runs.
@@ -135,6 +135,6 @@ dist/assets/index-DvguPBqz.js   314.36 kB │ gzip: 99.16 kB
 
 ## Suggested follow-up tasks
 - TASK-012: route table, auth session, API client (TanStack Query is already pinned for that).
-- TASK-012 and later, not done in this fix: extend the contract-drift test (enum values, per-schema field names and `required`, per-operation status codes and body schema refs), pin `@types/node`, and add a11y lint rules.
+- TASK-012 and later, not done in this fix: extend the contract-drift test (enum values, per-schema field names and `required`, per-operation status codes and body schema refs), pin `@types/node`, and add react-hooks, a11y (jsx-a11y), and type-aware lint rules.
 - TASK-007: frontend Dockerfile and nginx. Not started here.
 - TASK-008: run these four scripts in CI.
