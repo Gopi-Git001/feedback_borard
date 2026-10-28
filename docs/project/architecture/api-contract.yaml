@@ -724,7 +724,7 @@ components:
           example:
             error: { code: EMAIL_TAKEN, message: Email already registered, details: [] }
     RateLimited:
-      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per IP to signup, login, refresh, logout and invite preview; limits chosen by backend-bot.'
+      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied to signup, login (per IP and per account), refresh and invite preview (per IP), invite accept and organization create (per user); **not** to logout. Thresholds ASSUMED and configurable by environment variables (ADR-002).'
       headers:
         Retry-After:
           schema: { type: integer }
