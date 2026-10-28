@@ -20,7 +20,7 @@ This story is the Playwright e2e target. Alice = first user (becomes admin). Bob
 ## Business rules
 - Steps map one to one to the Orchestrator's journey: sign up (1), create org (2), invite a second user (3), post (4), vote (5), comment (6), change status (7). Criteria 8 and 9 are the permission and isolation checks required by TASK-002. Criterion 10 is the invite-token and browser-leak check added in TASK-040 (ADR-003: no token in any request URL, no Referer, no console or Web Storage leak; extended in Attempt 3). Criterion 1 also asserts the refresh cookie flags (F1-4 criterion 1).
 - All rules of F1-F9 apply; this story adds no new rules.
-- Test environment: the run is done with RATE_LIMIT_ENABLED=false (ADR-002 says the e2e compose override sets it; the Orchestrator asked for it in TASK-040), because all sign-ups come from one IP address. The rate-limit criteria (F1-2, F1-3, F3-1, F3-2) are not part of this journey; the application refuses to start with this setting when APP_ENV=production.
+- Test environment: the run is done with RATE_LIMIT_ENABLED=false (ADR-002 says the e2e compose override sets it; the Orchestrator asked for it in TASK-040), because all sign-ups come from one IP address. The rate-limit criteria (F1-2, F3-1, F3-2) are not part of this journey; the application refuses to start with this setting when APP_ENV=production.
 
 ## UI notes
 - Uses the screens of F1-F9 only. Two browser contexts (Alice, Bob) plus one for Carol in the e2e run.
@@ -38,4 +38,4 @@ Post-MVP features, delete success path (covered by F9-1), validation and duplica
 - The "owner's done definition" is not written in the repo; the steps follow the wording in the TASK-002 request (see handoff Open questions).
 - Depends on F3-1 only for "the invite link lets a new user join"; F3-1 uses one persistent token per organization.
 - Brief status was DRAFT when this was written; READY is conditional on brief approval.
-- Contract check (TASK-040): checked against api-contract.yaml and ADR-002, ADR-003 on the TASK-001 branch (PR #2, head 6a961c3, Proposed, not on main; the values used here are unchanged since 0459573): display name required at sign-up, authors shown by display name only, invite link /join#<token> with POST preview and accept, RATE_LIMIT_ENABLED. 401 is ASSUMED in the contract. Recheck once merged to main.
+- Contract check (TASK-040 Attempt 4): checked against api-contract.yaml and ADR-002, ADR-003 on the TASK-001 branch (PR #2, head bf3fabbe3339c16b9f87293e7e748ca2fcb0e41a, Proposed, not on main; the values used here are unchanged since 0459573): display name required at sign-up, authors shown by display name only, invite link /join#<token> with POST preview and accept, RATE_LIMIT_ENABLED. 401 is ASSUMED in the contract. Recheck once merged to main.

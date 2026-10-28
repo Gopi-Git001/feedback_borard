@@ -25,7 +25,7 @@ Traces to brief feature F1 (sign-up with a password; password minimum 8 was ASSU
 - User: password hash.
 
 ## Out of scope
-Password strength meters, composition rules, a breached-password check, password reset or change, other sign-up validation (F1-1), rate limits (F1-2).
+Password strength meters, composition rules, a breached-password check (no blocklist and no reset flow in the MVP: accepted risk R17), password reset or change, other sign-up validation (F1-1), rate limits (F1-2).
 
 ## Assumptions / Questions
 - ASSUMED: criterion 4 "refused before hashing" is an inference from "reject values over 128 (prevents hash-DoS)" in ADR-002; a test may only assert the 400 and the absence of an account.
@@ -35,4 +35,4 @@ Password strength meters, composition rules, a breached-password check, password
 - Brief status: brief.md is APPROVED (human, 2026-10-27). This story traces to the human-approved additions and to the security-bot review of PR #5 (comment 6458253424).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
 - HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract. 401 is ASSUMED in the contract, so it stays ASSUMED here too.
-- Contract check (TASK-040 Attempt 3): SignupRequest password minLength 8 and maxLength 128, LoginRequest password minLength 1 and maxLength 128, 400 VALIDATION_ERROR on sign-up and login, ADR-002 password policy (min 8, max 128, Argon2id). The Orchestrator's 8 and 128 accepted, 7 and 129 rejected match the contract. Checked against PR #2 head 6a961c3 (branch feature/TASK-001-stack-and-contracts, Proposed, not on main). Recheck once merged to main.
+- Contract check (TASK-040 Attempt 4): SignupRequest password minLength 8 and maxLength 128, LoginRequest password minLength 1 and maxLength 128, 400 VALIDATION_ERROR on sign-up and login, ADR-002 password policy (min 8, max 128, Argon2id). The Orchestrator's 8 and 128 accepted, 7 and 129 rejected match the contract. Checked against PR #2 head bf3fabbe3339c16b9f87293e7e748ca2fcb0e41a (branch feature/TASK-001-stack-and-contracts, Proposed, not on main). Recheck once merged to main.
