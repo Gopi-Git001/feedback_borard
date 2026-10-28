@@ -1,5 +1,5 @@
 # TASK-040: Align stories with the revised auth and invite design
-Owner: ba-bot   Milestone: M0   Size: M   Attempt: 1
+Owner: ba-bot   Milestone: M0   Size: M   Attempt: 3
 Blocked by: PR #2 (architect-bot's revised design, still under review)   Branch: fix/TASK-040-auth-and-invite-redesign
 Note: this spec was written retroactively by ba-bot at the Orchestrator's request, from the Orchestrator's TASK-040 message and the local instruction that relayed it.
 
@@ -20,18 +20,27 @@ Make the stories match the revised design in api-contract.yaml, ADR-002, ADR-003
 - Handoffs: TASK-039 says the repo is public, not private; keep Q11 (403 ORG_REQUIRED) as a leftover; keep ASSUMED labels.
 - Mark F1-2, F3-1, F2-1, E2E-1 (and any new F1-3 or F3-2) as touching authentication, so security-bot reviews them.
 - Add the missing docs/project/tasks/TASK-039.md and TASK-040.md.
-- F4-1 to F9-1 are not changed.
+- Attempt 2 (Orchestrator decisions): no login lockout and no per-account login limit (out of scope, listed as such in F1-2 and F1-3); rate limits are the brief's 10 requests per 60-second window per IP per endpoint (ASSUMED; window type is an implementation detail and tests must not depend on the boundary), for sign-up, login, refresh, invite preview and invite accept (accept per IP); logout is never rate limited.
+- Attempt 2: in F4-1, F6-1 and F9-1 only the last "Contract check" footer line is replaced (the contract is on PR #2, not on main). Their criteria are not changed. F5-1, F7-1 and F8-1 are not touched.
+- Attempt 3 (additional input, PR #2 head 6a961c3): new stories F1-4 (cookie flags, security headers on success and error responses, log hygiene), F1-5 (logout versus refresh races, session cap), F1-6 (password boundaries 8, 128 accepted and 7, 129 rejected), F2-2 (403 ORG_REQUIRED, ASSUMED), F3-3 (INVITE_TOKEN_KEY rotation); F1-3 gets criterion 6 (Origin: null); E2E-1 #1 checks the cookie flags and #10 also checks Referer, console, Web Storage and the address bar; rate-limit text aligned to 6a961c3 (Retry-After minimum 1, env-configurable limits, boundary-independent wording); the per-account login limit stays out of scope and is listed as an accepted risk in the handoff; architect-bot's story-vs-contract mismatches fixed.
+- Attempt 3: fix stale statements (this spec and the TASK-040 handoff said F4-1 to F9-1 were unchanged); update the numbering and design text in the TASK-039 handoff; make the rate-limit wording boundary-independent; keep the F3-2 criterion 5 examples valid under both contract heads (the 512 limit was removed at 6a961c3); label contract-sourced message texts consistently.
 
 ## Acceptance criteria
 - Given F1-2 and its split F1-3, then criteria cover rotation, reuse detection, the 7-day cap, logout revoking the family, the missing-header and bad-Origin 403, and no 429 on logout.
 - Given F3-1 and F3-2, then criteria cover the /join#<token> link, POST preview and accept, hash-only storage, the same link every time, and no token in any request URL.
 - Given F2-1, then criteria cover POST preview and accept and the "Invite link is invalid" message, and the sessionStorage flow is specified (F3-2 criterion 4).
+- Given F1-3, then it has 6 criteria (reuse detection, 10-second leeway, missing or wrong X-Requested-With gives 403, bad Origin gives 403, refresh token used as a bearer gives 401 ASSUMED, Origin: null and Origin variants give 403) and no lockout criterion.
+- Given F3-2, then it has 6 criteria (hash-only storage, no token in any URL or log with no-store, fragment removed from the address bar, the logged-out sessionStorage flow, uniform 404 INVITE_NOT_FOUND for any bad token of any length, accept 429 per IP).
 - Given E2E-1, then step 3 uses /join#<token> and a criterion checks that no request URL contains the token.
+- Given F1-4, F1-5, F1-6, F2-2 and F3-3, then they have 6, 6, 6, 5 and 6 criteria and cover: cookie flags and headers on every response (also errors) and log hygiene; the four concurrency tests and the session cap; password boundaries; ORG_REQUIRED; key rotation with the ADR-003 vector. Per-account login limit has no criterion (accepted risk).
 - Given every changed story, then it has 3-6 criteria (the journey is the justified exception), no QUESTION: items, and the security-review line.
 - Given the handoff, then it states the PR #2 head checked, lists conflicts with the Orchestrator's list, and keeps all ASSUMED labels.
 
 ## Out of scope
-Code, brief.md, plan.md, board.md, api-contract.yaml, ADRs, F4-1 to F9-1.
+Code, brief.md, plan.md, board.md, api-contract.yaml, ADRs, any criterion of F4-1 to F9-1 (only the Contract check footer line of F4-1, F6-1 and F9-1 changes; F5-1, F7-1 and F8-1 are untouched), login lockout and per-account login limits.
+
+## Files
+stories: F1-1, F1-2, F1-3 (new), F1-4, F1-5, F1-6, F2-2, F3-3 (all new in Attempt 3), F2-1, F3-1, F3-2 (new), E2E-1, and the footer line of F4-1, F6-1, F9-1. handoffs: TASK-039-handoff.md (corrections, supersession notes), TASK-040-handoff.md. tasks: TASK-039.md, TASK-040.md.
 
 ## Deliverables
 - PR titled `TASK-040: ...` on the branch above (do not merge)

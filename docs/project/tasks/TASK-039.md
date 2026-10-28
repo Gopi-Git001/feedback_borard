@@ -3,6 +3,8 @@ Owner: ba-bot   Milestone: M0   Size: S   Attempt: 2
 Blocked by: none (the contract on PR #2 was used as a reference)   Branch: fix/TASK-039-display-name-and-auth-extras
 Note: this spec was written retroactively by ba-bot at the Orchestrator's request (TASK-040). The original instructions came from the Orchestrator's message; the work was delivered in PR #4 (merged to main) and its handoff is docs/project/handoffs/TASK-039-handoff.md.
 
+Superseded in part by TASK-040 (PR #5): F1-2 was later split (F1-2 now has 6 criteria: #1 refresh and rotation, #2 invalid cookie 401, #3 7-day cap, #4 logout, #5 sign-up/login 429, #6 refresh 429; session hardening moved to F1-3), the invite preview became POST /invites/preview with the token in the body and the link /join#<token> (F3-1, F3-2), and there is no login lockout. The text below is TASK-039 as delivered.
+
 ## Goal
 Bring the TASK-002 stories in line with what the human approved after the stories were first written: a required display name at signup, rate limiting, and the refresh and logout endpoints.
 
