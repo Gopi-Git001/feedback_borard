@@ -51,18 +51,18 @@ The review found that browser hardening, CSRF handling, cache and log rules and 
 - **Request body size:** nginx sets `client_max_body_size 64k` (ASSUMED; the largest legitimate body is a 2000-character description, at most about 8 KB in UTF-8 plus JSON) so the backend never buffers large bodies. Over-size requests get nginx's 413, which is not a JSON error body and not in the contract; the SPA treats any non-2xx as an error. Pydantic field limits (contract) apply inside that size.
 - Access tokens stay valid until they expire after logout, reuse detection or eviction (at most 15 minutes, plus 30 s leeway), ADR-002.
 
-### Accepted-risk register (needs human acceptance)
-Approver: **Gopi Thungam (pending, asked 2026-10-27)**. Status of every row is **pending**; nothing here is approved until the Orchestrator reports that he confirmed it.
+### Accepted-risk register
+Approver: **Gopi Thungam**. R1 to R6 are **approved by Gopi Thungam, 2026-10-27, 8:43 PM CDT**, in his own words (relayed by the Orchestrator): "I accept all of those known risks for the MVP; record Gopi Thungam as approver." R7 was not in his list: it is **open** (verify in the first backend migration run) and is **not** an accepted product risk.
 
-| # | Accepted risk | Why accepted for the MVP | Status |
+| # | Accepted risk | Why accepted for the MVP | Status / approver |
 |---|---|---|---|
-| R1 | **No per-account lockout.** Per-account lockout is out of scope (story F1-2) and not offered; only the per-IP limit exists | Story scope; avoids a lockout denial-of-service on a victim's account | pending |
-| R2 | **Access token stays valid up to 15 min (plus 30 s leeway, so up to 15 min 30 s) after logout, reuse detection or eviction** (ADR-002) | Stateless access token; no per-request revocation lookup | pending |
-| R3 | **Per-IP limit versus NAT users:** many users behind one shared IP share the 10 per 60 s budget and can lock each other out of signup, login and refresh; one attacker with many IPs is not stopped | Approved per-IP design (brief, F1-2); the limits are configurable (`RATE_LIMIT_*`) | pending |
-| R4 | **Signup `409 EMAIL_TAKEN` is an account-enumeration oracle**; mitigated by the per-IP signup limit only | Required by story F1-1 | pending |
-| R5 | **No rate limit on authenticated writes** (posts, comments, votes, status changes, deletes) | Not in the approved scope; damage stays inside the member's own organization | pending |
-| R6 | **Invite link has no expiry, no revoke and no regenerate, and there is no remove-member** | Out of the approved MVP scope (not in the brief's list); a key rotation (ADR-003) is the only way to invalidate links | pending |
-| R7 | **The DDL and the contract were not run against PostgreSQL** (design only); SQL in data-model.md and ADR-002 is untested | No application or database exists in TASK-001; backend tests must prove it | pending |
+| R1 | **No per-account lockout.** Per-account lockout is out of scope (story F1-2) and not offered; only the per-IP limit exists | Story scope; avoids a lockout denial-of-service on a victim's account | Approved by Gopi Thungam, 2026-10-27 |
+| R2 | **Access token stays valid up to 15 min (plus 30 s leeway, so up to 15 min 30 s) after logout, reuse detection or eviction** (ADR-002) | Stateless access token; no per-request revocation lookup | Approved by Gopi Thungam, 2026-10-27 |
+| R3 | **Per-IP limit versus NAT users:** many users behind one shared IP share the 10 per 60 s budget and can lock each other out of signup, login and refresh; one attacker with many IPs is not stopped | Approved per-IP design (brief, F1-2); the limits are configurable (`RATE_LIMIT_*`) | Approved by Gopi Thungam, 2026-10-27 |
+| R4 | **Signup `409 EMAIL_TAKEN` is an account-enumeration oracle**; mitigated by the per-IP signup limit only | Required by story F1-1 | Approved by Gopi Thungam, 2026-10-27 |
+| R5 | **No rate limit on authenticated writes** (posts, comments, votes, status changes, deletes) | Not in the approved scope; damage stays inside the member's own organization | Approved by Gopi Thungam, 2026-10-27 |
+| R6 | **Invite link has no expiry, no revoke and no regenerate, and there is no remove-member** | Out of the approved MVP scope (not in the brief's list); a key rotation (ADR-003) is the only way to invalidate links | Approved by Gopi Thungam, 2026-10-27 |
+| R7 | **The DDL and the contract were not run against PostgreSQL** (design only); SQL in data-model.md and ADR-002 is untested | No application or database exists in TASK-001; backend tests must prove it | open, verify in the first backend migration run; not an accepted product risk |
 
 ## Consequences
 - Easier: one checklist for backend-bot, frontend-bot, devops-bot and qa-bot; each rule is testable (header assertions, CSP-violation check in Playwright, log-content tests, startup refusal tests).
