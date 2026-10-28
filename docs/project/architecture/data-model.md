@@ -7,7 +7,7 @@ Sources: brief.md features F1-F9 and ASSUMED list. Stories F1-F9 and E2E-1 exist
 ## 1. Tenancy strategy
 - **Model: shared tables with `organization_id` (row-level tenancy).** One database, one schema. Chosen because the product is free, small, single-region, and needs `docker compose up` simplicity; schema-per-tenant or DB-per-tenant would add migration and ops cost with no benefit at this scale.
 - **Tenant = organization.** `organizations.id` is the tenant id. A user belongs to exactly one organization in the MVP (ASSUMED in brief).
-- **Every tenant-owned table carries `organization_id uuid NOT NULL`, indexed:** `memberships`, `invites`, `posts`, `votes`, `comments`. `organizations` is the tenant root (its `id` is the tenant id). **Two technical tables are deliberately not tenant-owned and carry no `organization_id`: `refresh_tokens` (a login session belongs to a user, who exists before any organization; the `org` claim is re-read from `memberships` at every refresh, so no tenant id is ever stored in or trusted from a refresh token) and `rate_limit_counters` (keyed by IP or account hash, holds no tenant data).** Neither is reachable through any tenant endpoint. **`users` is deliberately global** (a login identity that exists before it has an organization; email must be unique across the system); it is linked to a tenant only through `memberships`, and it is never returned to another organization except the minimal author fields (`id`, `display_name`) on posts and comments of the viewer's own org.
+- **Every tenant-owned table carries `organization_id uuid NOT NULL`, indexed:** `memberships`, `invites`, `posts`, `votes`, `comments`. `organizations` is the tenant root (its `id` is the tenant id). **Two technical tables are deliberately not tenant-owned and carry no `organization_id`: `refresh_tokens` (a login session belongs to a user, who exists before any organization; the `org` claim is re-read from `memberships` at every refresh, so no tenant id is ever stored in or trusted from a refresh token) and `rate_limit_hits` (keyed by IP or user id, holds no tenant data).** Neither is reachable through any tenant endpoint. **`users` is deliberately global** (a login identity that exists before it has an organization; email must be unique across the system); it is linked to a tenant only through `memberships`, and it is never returned to another organization except the minimal author fields (`id`, `display_name`) on posts and comments of the viewer's own org.
 - **How isolation is enforced (defence in depth):**
   1. *Token:* the tenant id comes only from the verified JWT `org` claim (ADR-002), never from a request field.
   2. *Application:* a request-scoped `TenantContext(organization_id, user_id, role)` is the only way to obtain a repository/DB session for tenant tables; every repository method takes `organization_id` and includes `WHERE organization_id = :org` in every SELECT, UPDATE and DELETE. Lookups by id are `WHERE id = :id AND organization_id = :org`; not found (including "exists in another org") returns 404.
@@ -41,7 +41,7 @@ Sources: brief.md features F1-F9 and ASSUMED list. Stories F1-F9 and E2E-1 exist
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | this is the tenant id |
 | name | varchar(60) | no | | length 1-60 after trim (story F2-1); duplicates allowed | |
-| created_by | uuid | no | | FK users(id) ON DELETE RESTRICT | audit (cannot be a membership FK: the creator's membership is inserted after the organization) |
+| created_by | uuid | no | | FK users(id) ON DELETE NO ACTION | audit (cannot be a membership FK: the creator's membership is inserted after the organization) |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | |
 
@@ -61,19 +61,20 @@ Also: `UNIQUE (organization_id, user_id)` (kept for the post-MVP multi-org chang
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | |
 | organization_id | uuid | no | | FK organizations(id) ON DELETE CASCADE; **UNIQUE** | tenant column; UNIQUE = one invite token per organization |
-| token_hash | char(64) | no | | **UNIQUE**; CHECK token_hash ~ '^[0-9a-f]{64}$' | hex SHA-256 of the invite token. **The token itself is not stored**: it is derived (ADR-003) as `base64url(HMAC-SHA256(INVITE_TOKEN_KEY, 'invite:v' \|\| token_version \|\| ':' \|\| organization_id))`, 43 characters, so an admin is shown the same link every time (F3-1) while a database leak or backup does not reveal usable links |
+| token_hash | char(64) | no | | **UNIQUE**; CHECK token_hash ~ '^[0-9a-f]{64}$' | hex SHA-256 of the invite token. **The token itself is not stored**: it is derived (ADR-003) as `base64url(HMAC-SHA256(key, 'invite:v' \|\| token_version \|\| ':' \|\| organization_id))` where `key` is the **raw bytes decoded from `INVITE_TOKEN_KEY`** (at least 32 bytes, not the text), 43 characters, so an admin is shown the same link every time (F3-1) while a database leak or backup does not reveal usable links |
 | token_version | smallint | no | 1 | CHECK token_version >= 1 | input of the derivation; bumping it would later allow "regenerate link" without a schema change (not exposed in the MVP) |
-| created_by | uuid | no | | composite FK `(organization_id, created_by)` -> memberships(organization_id, user_id) ON DELETE RESTRICT | audit; must be an admin of the org (checked by the application) |
+| created_by | uuid | no | | composite FK `(organization_id, created_by)` -> memberships(organization_id, user_id) ON DELETE NO ACTION | audit; must be an admin of the org (checked by the application) |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | |
-Accepting an invite does not consume it (reusable). **There is no expiry, no revoke/regenerate endpoint and no remove-member endpoint in the MVP (product scope, F3-1); this is a documented risk and follow-up (section 8, ADR-003).** Creation is get-or-create: `INSERT ... ON CONFLICT (organization_id) DO NOTHING` then `SELECT`, so two admins clicking at once still yield one row; the token is then derived from the row's `organization_id` and `token_version`. Lookup is by `token_hash = sha256(token from the POST body)` (public endpoints, so it is the one lookup without a tenant filter; it resolves the tenant and reads only the organization name). The comparison is on the hash of a 256-bit value, so timing is not a practical oracle.
+Accepting an invite does not consume it (reusable). **There is no expiry, no revoke/regenerate endpoint and no remove-member endpoint in the MVP (product scope, F3-1); this is a documented risk and follow-up (section 8, ADR-003).** Creation is get-or-create: `INSERT ... ON CONFLICT (organization_id) DO NOTHING` then `SELECT`, so two admins clicking at once still yield one row; the token is then derived from the row's `organization_id` and `token_version`. Lookup is by `token_hash = sha256(token from the POST body)` (public endpoints, so it is the one lookup without a tenant filter; it resolves the tenant and reads only the organization name), followed by a constant-time check that the submitted token equals the token re-derived from the row's `organization_id` and `token_version` with the *current* `INVITE_TOKEN_KEY`. The comparison is on the hash of a 256-bit value, so timing is not a practical oracle.
+**Key rotation (attempt 3, ADR-003; security-bot to confirm):** `POST /organizations/current/invite` locks the row (`SELECT ... FOR UPDATE`), re-derives the token with the current key and, if `sha256(token) <> token_hash`, runs `UPDATE invites SET token_hash = :new, updated_at = now() WHERE organization_id = :org` in the same transaction; `token_version` is unchanged by a key rotation (it changes only for a future "regenerate link"). The extra check on lookup makes old links fail at once after a rotation; the new link works once an admin has opened "Invite". HMAC input is `'invite:v' || token_version (decimal ASCII) || ':' || organization_id (canonical lowercase hyphenated UUID text, 36 characters)`; ADR-003 has a test vector.
 
 ### 3.5 posts
 | Column | Type | Null | Default | Constraints / validation | Notes |
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | |
 | organization_id | uuid | no | | FK organizations(id) ON DELETE CASCADE | tenant column |
-| author_id | uuid | no | | composite FK `(organization_id, author_id)` -> memberships(organization_id, user_id) ON DELETE RESTRICT | audit; author must be a member of the post's organization |
+| author_id | uuid | no | | composite FK `(organization_id, author_id)` -> memberships(organization_id, user_id) ON DELETE NO ACTION | audit; author must be a member of the post's organization |
 | title | varchar(120) | no | | length 1-120 after trim (story F4-1) | |
 | description | varchar(2000) | no | | length 1-2000 after trim (story F4-1: required) | |
 | type | text | no | | CHECK type IN ('idea','bug') | |
@@ -90,7 +91,7 @@ Also: `UNIQUE (organization_id, id)` (target of composite foreign keys).
 | id | uuid | no | uuidv7() | PK | |
 | organization_id | uuid | no | | part of composite FK | tenant column |
 | post_id | uuid | no | | composite FK `(organization_id, post_id)` -> posts(organization_id, id) ON DELETE CASCADE | |
-| user_id | uuid | no | | composite FK `(organization_id, user_id)` -> memberships(organization_id, user_id) ON DELETE RESTRICT | voter must be a member of the organization |
+| user_id | uuid | no | | composite FK `(organization_id, user_id)` -> memberships(organization_id, user_id) ON DELETE NO ACTION | voter must be a member of the organization |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | rows are immutable; column kept for the standard-columns rule |
 Constraint: **`UNIQUE (user_id, post_id)`** (acceptance criterion).
@@ -106,7 +107,7 @@ Constraint: **`UNIQUE (user_id, post_id)`** (acceptance criterion).
 | id | uuid | no | uuidv7() | PK | |
 | organization_id | uuid | no | | part of composite FK | tenant column |
 | post_id | uuid | no | | composite FK `(organization_id, post_id)` -> posts(organization_id, id) ON DELETE CASCADE | |
-| author_id | uuid | no | | composite FK `(organization_id, author_id)` -> memberships(organization_id, user_id) ON DELETE RESTRICT | audit; author must be a member of the post's organization |
+| author_id | uuid | no | | composite FK `(organization_id, author_id)` -> memberships(organization_id, user_id) ON DELETE NO ACTION | audit; author must be a member of the post's organization |
 | body | varchar(1000) | no | | length 1-1000 after trim (story F6-1) | |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | members cannot edit comments (not in MVP) |
@@ -121,24 +122,25 @@ One row per issued refresh token. A **family** is one login session: all tokens 
 | family_started_at | timestamptz | no | now() | | login time, copied unchanged to every rotated token: the anchor of the **absolute 7-day cap** |
 | token_hash | char(64) | no | | **UNIQUE**; CHECK token_hash ~ '^[0-9a-f]{64}$' | hex SHA-256 of the refresh JWT `jti` |
 | expires_at | timestamptz | no | | CHECK expires_at <= family_started_at + interval '7 days' | always `family_started_at + 7 days`: rotation never extends the session |
-| revoked_at | timestamptz | yes | | | set on rotation, logout or reuse detection |
-| revoked_reason | text | yes | | CHECK revoked_reason IN ('rotated','logout','reuse_detected') | NULL while the token is active; set together with `revoked_at` (CHECK both-null-or-both-set) |
+| revoked_at | timestamptz | yes | | | set on rotation, logout, reuse detection or eviction by the 10-family cap |
+| revoked_reason | text | yes | | CHECK revoked_reason IN ('rotated','logout','reuse_detected','evicted') | NULL while the token is active; set together with `revoked_at` (CHECK both-null-or-both-set) |
 | replaced_by | uuid | yes | | FK refresh_tokens(id) ON DELETE SET NULL | the token issued by the rotation of this one |
 | created_at | timestamptz | no | now() | | |
-Algorithm (one transaction, `SELECT ... FOR UPDATE` on the row found by `token_hash`):
-1. Not found, or `expires_at <= now()`: 401, clear cookie.
+**Serialisation per family (attempt 3, security-bot N1; ADR-002):** a revoke cannot lock a successor row that a concurrent rotation has not committed yet, so every rotation, reuse revoke, logout and cap eviction first takes `pg_advisory_xact_lock(hashtextextended('rt_family:' || :family_id, 0))`, and login/signup first take `pg_advisory_xact_lock(hashtextextended('rt_user:' || :user_id, 0))` (order: user lock, then family lock; refresh and logout take only the family lock). The transaction runs at **READ COMMITTED** (required: after the lock is granted each statement must see what the previous holder committed). The row is found by `token_hash` without a lock only to learn `family_id`, then re-read `FOR UPDATE` after the lock. Concurrency tests are listed in ADR-002 (logout vs refresh, reuse vs refresh, 12 concurrent logins).
+Algorithm (one transaction at READ COMMITTED, family lock taken first, then `SELECT ... FOR UPDATE` on the row found by `token_hash`):
+1. Not found, or `expires_at <= now()` (exact, no JWT leeway): 401, clear cookie.
 2. `revoked_at IS NOT NULL`: **reuse**. If the token was rotated less than `REFRESH_REUSE_LEEWAY_SECONDS` (default 10) ago, answer 401 and change nothing (two tabs racing); otherwise `UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'reuse_detected' WHERE family_id = :f AND revoked_at IS NULL` and answer 401.
 3. Active: insert the successor (same `user_id`, `family_id`, `family_started_at`, `expires_at = family_started_at + 7 days`), set the old row `revoked_at = now(), revoked_reason = 'rotated', replaced_by = :new`, load the user's membership (`org`, `role`) and return a new access token.
-Login and signup create a new family (`family_id` = the new `id`). **Logout** sets `revoked_at = now(), revoked_reason = 'logout'` on every active row of the family. At most **10 active families per user** (ASSUMED): creating the 11th revokes the oldest (`revoked_reason = 'rotated'`). Cleanup: rows with `expires_at < now() - interval '30 days'` are deleted opportunistically at login (a scheduled job is a follow-up).
+Login and signup create a new family (`family_id` = the new `id`); if the request carries a `refresh_token` cookie whose JWT verifies (`typ=refresh`), the transaction first revokes that presented family (under the user lock, then its family lock; `revoked_reason = 'logout'`) so that logging in again in the same browser does not stack sessions (security-bot N4; no CSRF guard is needed because this only ends a session). **Logout** (under the family lock) sets `revoked_at = now(), revoked_reason = 'logout'` on every active row of the family, including a successor committed by a refresh that was in flight. At most **10 active families per user** (ASSUMED): creating the 11th (in the login transaction, under the user lock) revokes the active family with the lowest `family_started_at` (ties: lowest `family_id`; an active family has at least one row that is neither revoked nor expired; every active row of it gets `revoked_reason = 'evicted'`); that session gets 401 on its next refresh and has to log in again (the contract says so on signup and login). Cleanup: rows with `expires_at < now() - interval '30 days'` are deleted opportunistically at login (a scheduled job is a follow-up).
 
-### 3.9 rate_limit_counters (shared fixed-window counters; ADR-002, not tenant-owned)
-Counters live in PostgreSQL so that **all backend workers and containers share them** (an in-process limiter would multiply every limit by the number of workers).
+### 3.9 rate_limit_hits (shared rolling-window hit log; ADR-002, not tenant-owned)
+The approved rule (brief, F1-2, F3-1) is **10 requests per rolling 60 seconds per IP per endpoint**, so the table logs hits and counts those inside the window; a fixed-window counter would allow up to twice the limit around a window boundary and would not give the "after Retry-After seconds a request succeeds" behaviour of F1-2 criterion 5 exactly. Rows live in PostgreSQL so that **all backend workers and containers share them** (an in-process limiter would multiply every limit by the number of workers). The table is `UNLOGGED` (no WAL; the limits simply reset after a database crash, which is acceptable).
 | Column | Type | Null | Default | Constraints / validation | Notes |
 |---|---|---|---|---|---|
-| bucket | text | no | | PK part; length <= 200 | `<group>:<subject>`, for example `login_ip:203.0.113.7`, `login_acct:<sha256(lower(email))>`, `signup_ip:...`, `refresh_ip:...`, `invite_preview_ip:...`, `invite_accept_user:<user id>`, `org_create_user:<user id>`. Emails and tokens are never stored in clear |
-| window_start | timestamptz | no | | PK part | start of the fixed window (`floor(now / window_seconds)`) |
-| hits | integer | no | 1 | CHECK hits >= 1 | |
-Hit: `INSERT ... ON CONFLICT (bucket, window_start) DO UPDATE SET hits = rate_limit_counters.hits + 1 RETURNING hits`; over the limit gives 429 with `Retry-After`. Cleanup: rows with `window_start < now() - interval '1 day'` are deleted opportunistically. Thresholds, env vars and the proxy-trust assumption: ADR-002.
+| id | bigint | no | identity | PK (`GENERATED ALWAYS AS IDENTITY`) | tooling and deletes only |
+| bucket | text | no | | length <= 200 | `<group>:<subject>`, for example `signup_ip:203.0.113.7`, `login_ip:...`, `refresh_ip:...`, `invite_preview_ip:...`, `invite_accept_ip:...`, `org_create_user:<user id>`. IPv4 is the full address, **IPv6 is the /64 prefix** (for example `2001:db8:1:2::/64`). Emails and tokens are never stored |
+| hit_at | timestamptz | no | clock_timestamp() | | when an allowed request was counted |
+Algorithm (one short transaction): `SELECT pg_advisory_xact_lock(hashtext(:bucket))`; `SELECT count(*), min(hit_at) FROM rate_limit_hits WHERE bucket = :bucket AND hit_at > clock_timestamp() - make_interval(secs => :window)`; if `count >= :max` answer 429 with `Retry-After = max(1, ceil(extract(epoch FROM min_hit_at + window - now)))` and **insert nothing**; otherwise `INSERT (bucket, hit_at)` and let the request proceed. Rejected requests are not stored, so a client that keeps retrying cannot extend its own block. The request counts whether or not it later succeeds. A bucket never holds more than `max` rows inside the window, so the count is cheap. Cleanup: each allowed hit deletes that bucket's rows older than the window (same transaction), and a background task (startup and every 60 s) deletes rows with `hit_at < now() - interval '1 hour'` so buckets of clients that never return disappear. The lock key is `hashtextextended(:bucket, 0)` (64-bit); the count and insert use their own short transaction, not the request's. Thresholds (default `10/60`), env vars and the proxy-trust assumption: ADR-002.
 
 ## 4. ER diagram
 ```mermaid
@@ -149,7 +151,7 @@ erDiagram
     memberships ||--o{ comments : "writes (composite FK)"
     memberships ||--o{ votes : "casts (composite FK)"
     organizations ||--o{ memberships : has
-    organizations ||--o{ invites : issues
+    organizations ||--o| invites : "issues (one, UNIQUE)"
     organizations ||--o{ posts : owns
     organizations ||--o{ votes : owns
     organizations ||--o{ comments : owns
@@ -187,13 +189,13 @@ erDiagram
         char token_hash UK "sha256 of jti"
         timestamptz expires_at
         timestamptz revoked_at
-        text revoked_reason "rotated|logout|reuse_detected"
+        text revoked_reason "rotated|logout|reuse_detected|evicted"
         uuid replaced_by FK
     }
-    rate_limit_counters {
-        text bucket PK
-        timestamptz window_start PK
-        int hits
+    rate_limit_hits {
+        bigint id PK
+        text bucket "group:ip or user id"
+        timestamptz hit_at
     }
     posts {
         uuid id PK
@@ -234,7 +236,7 @@ Every foreign key and every query in brief F1-F9 is covered. PostgreSQL does not
 | votes | UNIQUE (user_id, post_id); (organization_id, post_id); (organization_id, user_id) | one vote per user per post (F5); "has voted" for a page of posts; FK |
 | comments | (organization_id, post_id, created_at, id); (organization_id, author_id) | comment list per post oldest first (F6); FK |
 | refresh_tokens | PK (id); UNIQUE (token_hash); (family_id); (user_id, revoked_at); (expires_at) | lookup on refresh, revoke a whole family on reuse/logout, count active families per user, cleanup |
-| rate_limit_counters | PK (bucket, window_start); (window_start) | atomic hit counter, cleanup |
+| rate_limit_hits | PK (id); (bucket, hit_at) | count hits of a bucket inside the window, min(hit_at) for Retry-After, cleanup by hit_at |
 
 Filter combining both type and status uses the status index and filters type in memory; at MVP scale this is fine. Revisit with `EXPLAIN` if lists exceed ~10k posts per organization.
 
@@ -246,22 +248,22 @@ Filter combining both type and status uses the status index and filters type in 
 | users.display_name | PII (low) | shown to members of the same organization only |
 | invites.token_hash | secret-derived | only the SHA-256 of the invite token is stored; the token is re-derived with `INVITE_TOKEN_KEY` when an admin asks for the link. The token is returned only to admins of that org (`POST /organizations/current/invite`) and is accepted only **in a POST body** (`POST /invites/preview`, `POST /invites/accept`); the link uses the URL fragment (`/join#<token>`), so it is never in a server-visible path or query, in access logs or in `Referer` (ADR-003). Bodies of `/invites/*` and `/auth/*` are not logged; invite responses are `Cache-Control: no-store`; the token is never written to application logs by value |
 | refresh_tokens.token_hash | secret-derived | SHA-256 of the refresh `jti`; the refresh JWT is only in the HttpOnly cookie; rows are revoked, never edited otherwise (ADR-002) |
-| rate_limit_counters.bucket | PII-derived | contains an IP address or a SHA-256 hash of an email; emails are never stored in clear; rows expire within a day |
+| rate_limit_hits.bucket | PII-derived | contains an IP address (IPv6 as /64) or a user id; emails are never stored; rows are deleted after an hour |
 | JWT secret, invite token key | secret | env vars `JWT_SECRET` and `INVITE_TOKEN_KEY` (each must decode to at least 32 bytes, ADR-002), never in the database or repo |
 | Payment data | n/a | none: free product, no billing |
 Backups and logs must not contain raw tokens or passwords. Structured logs record admin actions (status change, delete: actor id, organization id, post id, timestamp) for auditability; a persistent audit table is a follow-up (section 8).
 
 ## 7. Migration and compatibility notes
-- Initial schema = one Alembic revision `0001_initial` creating all **nine** tables (the seven business tables plus `refresh_tokens` and `rate_limit_counters`), constraints and indexes above (backend-bot, not architect-bot).
+- Initial schema = one Alembic revision `0001_initial` creating all **nine** tables (the seven business tables plus `refresh_tokens` and `rate_limit_hits`; `rate_limit_hits` is created `UNLOGGED`), constraints and indexes above (backend-bot, not architect-bot).
 - Planned change "multiple organizations per user" (post-MVP): drop `UNIQUE (user_id)` on `memberships`; JWT `org` becomes the selected org; no data migration needed. Needs an ADR and a contract version bump.
 - Revocable / regenerable / expiring invite (out of MVP per F3-1): `invites.token_version` already allows regeneration (bump the version); an expiry or revoke needs a new column and an endpoint; needs an ADR.
-- Removing a member (out of MVP): the composite FKs on `posts`, `comments` and `votes` are `ON DELETE RESTRICT`, so it needs a design (anonymise or reassign content, delete the member's votes) and an ADR.
+- Removing a member (out of MVP): the composite FKs to `memberships` (on `posts`, `comments`, `votes`, `invites`) are `ON DELETE NO ACTION` (checked at the end of the statement, so deleting a whole organization, which cascades to its posts and memberships in one statement, would still work, whereas `RESTRICT` is immediate and depends on the cascade order; deleting an organization is itself out of the MVP), so removing a single member is rejected by the database and needs a design (anonymise or reassign content, delete the member's votes) and an ADR.
 - Any change to this approved model needs an ADR and Orchestrator go-ahead (architect rules).
 
 ## 8. Open questions / follow-ups
 - Audit log table (who changed status or deleted what) is not in the brief; recommended as a later task.
 - PostgreSQL RLS as defence in depth (section 1, point 5).
-- Security follow-ups recorded after the security review (none is in a story): invite token expiry/regenerate/revoke and remove-member (product scope); RLS (section 1, point 6); a scheduled cleanup job for `refresh_tokens` and `rate_limit_counters`; JWT signing-key rotation with a `kid` header; a breached-password check and a longer minimum password length (F1-1 fixes the minimum at 8, NIST SP 800-63B-4 and OWASP ASVS ask for more; ADR-004).
+- Security follow-ups recorded after the security review (none is in a story): invite token expiry/regenerate/revoke and remove-member (product scope); RLS (section 1, point 6); a scheduled cleanup job for `refresh_tokens` and `rate_limit_hits`; JWT signing-key rotation with a `kid` header; a breached-password check and a longer minimum password length (F1-1 fixes the minimum at 8, NIST SP 800-63B-4 asks for 15 and ASVS 5.0.0 recommends 15, requires 8; a password blocklist, ASVS 6.2.4; ADR-004).
 - Invite model follows story F3-1 (one persistent token per organization, shown again on every click); this replaces my first design (many hashed tokens, shown once). Attempt 2b keeps the one-link behaviour but stores only a hash and derives the token (ADR-003).
 - Description is required (1-2000 characters) per story F4-1; limits for name/title/description/comment follow the stories, which are ASSUMED numbers there.
 
@@ -271,3 +273,4 @@ Backups and logs must not contain raw tokens or passwords. Structured logs recor
 - 2026-10-27: field limits aligned to TASK-002 stories (org name 60, title 120, description required 2000, comment 1000).
 - 2026-10-27: invites changed to one persistent plain token per organization after TASK-002 story F3-1 landed (token_hash and revoked_at removed, UNIQUE (organization_id) added).
 - 2026-10-27: attempt 2b (security review FAIL, PR #2): added `refresh_tokens` (rotation, reuse detection, absolute 7-day cap; **reverses** the stateless-refresh note) and `rate_limit_counters`; invites store `token_hash` + `token_version` instead of `token`; composite FKs to `memberships` on posts, comments, votes and invites; display_name trim-then-validate wording; non-owner DB role and RLS follow-up.
+- 2026-10-27: attempt 3 (qa-bot review of attempt 2): `rate_limit_counters` (fixed window) replaced by `rate_limit_hits` (hit log, exact rolling window, default 10/60 per IP as in the brief and stories F1-2/F3-1, IPv6 by /64); the per-account `login_acct` bucket removed (account lockout is out of scope per F1-2); invite key rotation rule (admin endpoint updates `token_hash`, lookup re-checks against the current key); HMAC input pinned; `refresh_tokens.revoked_reason` gains `'evicted'` for the 10-family cap; composite FKs to `memberships` are `ON DELETE NO ACTION`; ER diagram shows one invite per organization.
