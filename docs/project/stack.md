@@ -93,6 +93,32 @@ Only values fetched live on 2026-10-27 are listed. Anything I could not verify i
 
 **OpenAPI client generator for the frontend: none is pinned.** Findings (npm registry, 2026-10-27): `openapi-typescript` 7.13.0 (2026-02-11) declares peer `typescript ^5.x`, which conflicts with the confirmed TypeScript 6.0.3 pin (npm would refuse the install without `--legacy-peer-deps`); `@hey-api/openapi-ts` 0.99.0 (2026-06-22) accepts TypeScript 6 but is pre-1.0 (0.x, breaking changes between minors); `orval` 8.45.0 (2026-10-25) was not evaluated against TypeScript 6. Recommendation: frontend-bot writes the typed API client by hand from `api-contract.yaml` (18 operations) in the first scaffold task; if a generator is wanted later, it needs its own ADR with a compatibility test against TypeScript 6.0.3.
 
+## Environment variables (single table, attempt 3)
+Every environment variable defined by the ADRs, the contract and data-model.md is listed here; if a document and this table disagree, fix the document. Services: **backend** (FastAPI), **migrate** (Alembic, owner role), **nginx** (frontend container), **compose** (compose file or `.env.example`). Variables for the database container itself (for example `POSTGRES_PASSWORD` and the two role passwords) and for the Playwright harness are chosen by devops-bot in TASK-003/007/013 and are not defined here. "Prod-required" means the app must refuse to start when it is missing or invalid with `APP_ENV=production`. Secrets have only a non-random, rejected placeholder in `.env.example` (ADR-002).
+
+| Variable | Type / format | Default | Read by | Prod-required | Meaning (owner) |
+|---|---|---|---|---|---|
+| `APP_ENV` | enum `development`, `test`, `production` | **none**: unset or any other value means the app refuses to start (fail closed) | backend | yes | switches the dev-only relaxations on or off (ADR-002, ADR-004) |
+| `JWT_SECRET` | unpadded base64url, decodes to at least 32 bytes, at least 16 distinct characters, no weak fragment | none (placeholder in `.env.example` is rejected on purpose) | backend | yes | HS256 signing key for access and refresh JWTs (ADR-002) |
+| `INVITE_TOKEN_KEY` | same rule as `JWT_SECRET`; must differ from it; the HMAC key is the decoded bytes | none (rejected placeholder) | backend | yes | derives the invite token (ADR-003); rotation runbook in ADR-003 |
+| `DATABASE_URL` | PostgreSQL URL of the **restricted, non-owner role** | none (compose sets it for the dev role) | backend | yes | runtime connection (ADR-004 section 5) |
+| `DATABASE_MIGRATION_URL` | PostgreSQL URL of the **owner role** | none | migrate (never the backend at runtime) | yes, for deploys that migrate | Alembic migrations (ADR-004 section 5) |
+| `FRONTEND_ORIGIN` | bare origin `scheme://host[:port]`, no path or trailing slash | none (dev example `http://localhost:8080`, devops-bot fixes the port) | backend (CSRF `Origin` check, CORS), compose | yes | the one allowed origin (ADR-004) |
+| `COOKIE_SECURE` | boolean | `true` | backend | must be `true` | `Secure` flag of the refresh cookie; `false` only with `APP_ENV` `development` or `test` (ADR-004) |
+| `TRUSTED_PROXY_IPS` | comma-separated exact IP addresses (no `*`, no `0.0.0.0/0`, no `::/0`) | compose sets the fixed nginx address, for example `172.28.0.10` | backend | yes, non-empty | peers whose `X-Forwarded-For` is believed (ADR-002) |
+| `ARGON2_MAX_CONCURRENCY` | integer 1-64 | `4` | backend | no | concurrent Argon2 hashes per worker, at most 256 MiB at 4 (ADR-002) |
+| `REFRESH_REUSE_LEEWAY_SECONDS` | integer 0-60 | `10` | backend | no | a reused refresh token inside this window after rotation gets 401 without revoking the family (ADR-002) |
+| `RATE_LIMIT_ENABLED` | boolean | `true` | backend | must be `true` | switches all limits off for tests only (ADR-002) |
+| `RATE_LIMIT_SIGNUP_PER_IP` | `<max>/<window_seconds>` | `10/60` | backend | no | signup, per client IP (stories F1-2) |
+| `RATE_LIMIT_LOGIN_PER_IP` | same | `10/60` | backend | no | login, per client IP (F1-2) |
+| `RATE_LIMIT_REFRESH_PER_IP` | same | `10/60` | backend | no | refresh, per client IP (F1-2) |
+| `RATE_LIMIT_INVITE_PREVIEW_PER_IP` | same | `10/60` | backend | no | invite preview, per client IP (F3-1) |
+| `RATE_LIMIT_INVITE_ACCEPT_PER_IP` | same | `10/60` | backend | no | invite accept, per client IP (brief; not in a story) |
+| `RATE_LIMIT_ORG_CREATE_PER_USER` | same | `10/60` | backend | no | organization create, per user id (architect addition) |
+
+Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
+
 ## Change log
 - 2026-10-27: initial pinned set (TASK-001, architect-bot).
 - 2026-10-27: attempt 2: Node 24 wording corrected (Maintenance LTS), TypeScript 6.0.3 confirmed, same-day-release risk note, addendum for uv, Docker images, ruff, mypy, TanStack Query, Vitest, generator.
+- 2026-10-27: attempt 3: one environment-variable table (defaults, readers, production-required), rate-limit variables renamed to the 10/60 per IP rule.
