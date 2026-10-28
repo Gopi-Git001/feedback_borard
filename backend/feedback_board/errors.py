@@ -36,16 +36,28 @@ class ErrorResponse(BaseModel):
 class AppError(Exception):
     """A handled failure that already has a contract-shaped body."""
 
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.headers = headers or {}
 
 
 class DatabaseUnavailable(AppError):
     def __init__(self) -> None:
-        super().__init__(503, "INTERNAL_ERROR", "Database unavailable")
+        super().__init__(
+            503,
+            "INTERNAL_ERROR",
+            "Service temporarily unavailable",
+            headers={"Retry-After": "1"},
+        )
 
 
 def error_response(
@@ -53,11 +65,15 @@ def error_response(
     code: str,
     message: str,
     details: list[ErrorDetail] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     payload = ErrorResponse(
         error=ErrorBody(code=code, message=message, details=details or []),
     )
-    return JSONResponse(status_code=status_code, content=payload.model_dump())
+    response = JSONResponse(status_code=status_code, content=payload.model_dump())
+    for key, value in (headers or {}).items():
+        response.headers[key] = value
+    return response
 
 
 def _field_name(loc: object) -> str:
@@ -110,7 +126,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppError)
     async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
-        return error_response(exc.status_code, exc.code, exc.message)
+        return error_response(exc.status_code, exc.code, exc.message, headers=exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
