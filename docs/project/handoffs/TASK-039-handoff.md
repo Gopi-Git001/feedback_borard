@@ -1,7 +1,9 @@
 # Handoff: TASK-039 Display name at signup and auth extras in stories
-Bot: ba-bot   Attempt: 1   PR: https://github.com/Gopi-Git001/feedback_borard/pull/4   Branch: fix/TASK-039-display-name-and-auth-extras
+Bot: ba-bot   Attempt: 2   PR: https://github.com/Gopi-Git001/feedback_borard/pull/4   Branch: fix/TASK-039-display-name-and-auth-extras
 
-Open questions: see the "Open questions" section below (9 items, all ASSUMED or contract mismatches).
+Open questions: see the "Open questions" section below (11 items, all ASSUMED, contract mismatches or known leftovers).
+
+Review history: Attempt 1 = CHANGES_REQUESTED by qa-bot (PR #4 comment 6457938670, head 0e04f19); fixed in Attempt 2 (401 wording, stale footers, Retry-After marked ASSUMED, ORG_REQUIRED recorded as a known leftover).
 
 ## Summary
 Sign-up now takes email, password and a required display name (1-80 characters, from the API contract) in F1-1 and E2E-1; posts and comments show the author's display name, never the email (F4-1, F6-1, E2E-1). A new story F1-2 covers token refresh, log out and the 429 rate limit on sign-up, login and refresh; the invite-preview rate limit is criterion 6 of F3-1. F9-1 got a Cancel criterion, and the TASK-002 handoff now links PR #3. The TASK-039 spec file was not found in the repo (no docs/project/tasks/TASK-039.md on any origin branch); the instructions came from the Orchestrator message and its relayed summary. The TEAM-CONVENTIONS.md file could not be fetched (private repo), so this report uses the format in the write-handoff-report skill, which cites section 5.
@@ -30,7 +32,8 @@ Only under docs/project/stories/ and docs/project/handoffs/:
 - docs/project/stories/E2E-1-owner-journey.md (display names in steps 1, 3, 4, 6, 9)
 - docs/project/handoffs/TASK-002-handoff.md (one "Review history" line)
 - docs/project/handoffs/TASK-039-handoff.md (NEW)
-Not touched: brief.md, plan.md, board.md, code, F5-1, F7-1, F8-1.
+Attempt 2 also edited only the HTTP-codes footer line (stale "contract did not exist yet" sentence) in F5-1, F7-1 and F8-1, and the 401 wording, Retry-After marking and footers in the files above.
+Not touched: brief.md, plan.md, board.md, code.
 
 ## How to test locally
 Docs-only, nothing to run. Review: (1) each changed criterion can be turned into a test with the stated values; (2) every ASSUMED item below is marked ASSUMED in the story; (3) values from the contract match `git show origin/feature/TASK-001-stack-and-contracts:docs/project/architecture/api-contract.yaml`; (4) `git diff --name-only origin/main` lists only docs/project/stories/ and docs/project/handoffs/ files.
@@ -40,13 +43,16 @@ No automated tests (docs task). I re-ran the review-story-readiness checklist on
 
 | Story | Ready? | Gaps / questions |
 |-------|--------|------------------|
-| F1-1 signup-login (6 criteria) | READY | Display name spaces-only = empty is ASSUMED (Q2). #3 bundles four validation groups, as F4-1 #2 does. Q1 brief gate |
-| F1-2 session-and-rate-limits (5 criteria) NEW | READY | Threshold 10 per 60 s per IP ASSUMED (Q3); 429 body and header are contract-sourced; no role permission case exists for public auth endpoints, the 401 on refresh (#2) is the access case; logout limit (Q5); test-environment rate limits (Q4); not in brief.md (Q1) |
-| F2-1 organization-create-join (6) | READY | Only a UI note changed; criteria unchanged |
-| F3-1 invite-link (6) | READY | Preview threshold ASSUMED (Q3); preview is the invitee-side page inside the admin-sharing story, kept here because the contract tags it F2 and F3 |
-| F4-1 posts (6) | READY | Criteria unchanged in count; author by display name |
-| F6-1 comments (6) | READY | Criteria unchanged in count; author by display name |
-| F9-1 delete-post (6) | READY | Cancel button text and dialog are ASSUMED (already in story) |
+| F1-1 signup-login (6 criteria) | READY | Contract check reworded: 401 stays ASSUMED; footer corrected. Display name spaces-only = empty is ASSUMED (Q2). #3 bundles four validation groups, as F4-1 #2 does. Q1 brief gate |
+| F1-2 session-and-rate-limits (5 criteria) NEW | READY | Retry-After "greater than 0" ASSUMED in #4 and #5 (Q10); threshold 10 per 60 s per IP ASSUMED (Q3); 429 body and header are contract-sourced; no role permission case exists for public auth endpoints, the 401 on refresh (#2) is the access case; logout limit (Q5); test-environment rate limits (Q4); not in brief.md (Q1) |
+| F2-1 organization-create-join (6) | READY | A UI note and the HTTP-codes footer changed; criteria unchanged; 403 ORG_REQUIRED not covered (Q11) |
+| F3-1 invite-link (6) | READY | Preview threshold ASSUMED (Q3); Retry-After "greater than 0" in #6 ASSUMED (Q10); preview is the invitee-side page inside the admin-sharing story, kept here because the contract tags it F2 and F3 |
+| F4-1 posts (6) | READY | Criteria unchanged in count; author by display name; footer corrected |
+| F6-1 comments (6) | READY | Criteria unchanged in count; author by display name; footer corrected |
+| F9-1 delete-post (6) | READY | Cancel button text and dialog are ASSUMED (already in story); contract check no longer says the contract confirms 401 |
+| F5-1 upvotes (6) | READY | Only the HTTP-codes footer changed |
+| F7-1 board (6) | READY | Only the HTTP-codes footer changed; criterion 2 still uses lowercase "then" (unchanged from main) |
+| F8-1 status-change (6) | READY | Only the HTTP-codes footer changed |
 | E2E-1 owner-journey (9) | READY | Above 6 on purpose (justified in the story); header as display-name location ASSUMED |
 
 Definition of Ready boxes are checked for all rows except "traces to an APPROVED brief" (conditional on the brief approval, TASK-002 Q1) and, for F1-2, "traces to brief": it traces to F1 plus the human approval relayed by the Orchestrator (Q1). The "no conflict with the API contract" box was checked against api-contract.yaml on the TASK-001 branch, which is not on main yet; the changed stories carry a "Contract check (TASK-039)" line.
@@ -61,7 +67,9 @@ Definition of Ready boxes are checked for all rows except "traces to an APPROVED
 - **Invite preview** is the contract's public GET /invites/{token}: returns only the organization name, 404 for an unknown token (already covered by F2-1 #4), 429 rate limited. Added as F3-1 #6 (F3-1 had 5 criteria).
 - **Endpoint paths** are named only in F1-2/F3-1 context where the Orchestrator named them; criteria are still written as user and response behaviour.
 - **F9-1 Cancel** appended as #6 so existing references to F9-1 #2-#5 stay valid.
-- **Footers of unchanged stories** (F5-1, F7-1, F8-1, and the old footer lines in changed stories) still say the contract did not exist; I added a contract-check line only to the changed stories. 401 is now contract-confirmed (Unauthorized response), the old ASSUMED marker is left in place.
+- **HTTP-codes footer (Attempt 2).** The stale "contract did not exist yet ... stories use no other HTTP code" sentence is replaced in all nine F-stories (F1-1 to F9-1, except F1-2 and E2E-1, which never had it) by one line: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). The "Contract check (TASK-039)" lines no longer say the contract confirms 401; 401 stays ASSUMED everywhere.
+- **Retry-After (Attempt 2).** The contract only says the header holds integer seconds. "Greater than 0" in F1-2 #4, #5 and F3-1 #6 is now marked ASSUMED in the criterion and in the story Assumptions.
+- **403 ORG_REQUIRED not added as a criterion (judgment call).** The contract lists it as ASSUMED, but every candidate story (F2-1, F4-1, F7-1) already has 6 criteria and none has a spare slot without bundling or dropping coverage, so it is recorded as a known leftover (Q11).
 - **Not added:** author display name on the board row in F7-1 (not requested; the contract's Post object includes the author, so it is available).
 
 ## Open questions
@@ -74,6 +82,8 @@ Definition of Ready boxes are checked for all rows except "traces to an APPROVED
 7. **UI texts newly ASSUMED:** "Log out" label, silent renewal and redirect to the login form after a failed refresh or logout, the app header as the place that shows my display name, the "Cancel" button text in F9-1.
 8. **Display names are not unique** (ASSUMED); two members may share one, which makes two authors look identical on the board. Confirm.
 9. **Logout does not revoke tokens** (contract and ADR-002 limit, not a story question): an issued access token lives up to 15 minutes and a stolen refresh token up to 7 days. Confirm the human accepts this for the MVP; it is already a follow-up in ADR-002.
+10. **Retry-After minimum** (ASSUMED): F1-2 #4, #5 and F3-1 #6 say "greater than 0"; the contract says only integer seconds. Confirm, or architect-bot adds the minimum to the contract; otherwise drop "greater than 0".
+11. **403 ORG_REQUIRED has no story criterion (known leftover, ASSUMED in the contract).** A logged-in user with no organization calling any org-scoped endpoint gets 403 ORG_REQUIRED (contract conventions and Forbidden response). Candidate stories F2-1, F4-1 and F7-1 are full at 6 criteria. Orchestrator: allow a 7th criterion (suggested: F7-1, "Given I am logged in and belong to no organization, When I request the board, Then the response is 403 with code ORG_REQUIRED and no posts (ASSUMED)") or a small story, or accept the leftover.
 
 ## Suggested follow-up tasks
 - Orchestrator: update brief.md (display name, rate limiting, refresh, logout) and put Q2, Q3, Q5, Q8, Q9 in front of the human.

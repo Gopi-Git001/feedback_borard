@@ -8,7 +8,7 @@ As an admin, I want to see and copy my organization's invite link and share it, 
 3. Given I am a member (not admin) of "Acme", When I try to get the invite link, Then the response is 403 and no invite token is created.
 4. Given "Dan" (display name "Dan") is logged in with no organization, and organizations "Acme" and "Beta" each have an invite token, When Dan opens the "Acme" invite link and accepts, Then he is a member (not admin) of "Acme" only, he sees only "Acme" posts, requesting any "Beta" post by its id returns 404, and the "Acme" token differs from the "Beta" token.
 5. Given I am not logged in, When I request the invite link, Then the response is 401 and no token is created.
-6. Given one IP address has already made 10 invite-preview requests in the last 60 seconds (ASSUMED threshold; the preview is the public page that shows only the organization name, e.g. "Acme", before sign-up), When it makes an 11th request, Then the response is 429 with code "RATE_LIMITED", the message "Too many requests. Try again later." and a Retry-After header with a whole number of seconds greater than 0, and no organization name is returned; and after the Retry-After seconds have passed, previewing the "Acme" link shows "Acme" and nothing else about the organization.
+6. Given one IP address has already made 10 invite-preview requests in the last 60 seconds (ASSUMED threshold; the preview is the public page that shows only the organization name, e.g. "Acme", before sign-up), When it makes an 11th request, Then the response is 429 with code "RATE_LIMITED", the message "Too many requests. Try again later." and a Retry-After header with a whole number of seconds (the contract says only "integer seconds"; "greater than 0" is ASSUMED), and no organization name is returned; and after the Retry-After seconds have passed, previewing the "Acme" link shows "Acme" and nothing else about the organization.
 
 ## Business rules
 - Each organization has one persistent invite token, created the first time an admin opens "Invite" and shown again on every later click; clicking never creates a new token (Orchestrator decision, consistent with brief.md ASSUMED).
@@ -31,10 +31,11 @@ Revoking, regenerating or expiring links, multiple links per organization, sendi
 ## Assumptions / Questions
 - ASSUMED: minimum token length is 32 characters.
 - ASSUMED: invite-preview rate limit of 10 requests per rolling 60 seconds per IP address (contract says "rate limited", no number); the limit counts valid and invalid tokens alike. Same threshold and 429 format as F1-2.
+- ASSUMED: the Retry-After value is greater than 0 (criterion 6). The contract only says the header holds integer seconds; it gives no minimum.
 - ASSUMED: exact UI texts "Invite", "Copy", "Copied" (about 2 seconds); the brief only says the admin generates a link to copy and share.
 - DECIDED by Orchestrator (TASK-002 follow-up): one persistent invite token per organization; "Invite" shows the same link every time. No open questions remain for this story.
 - ASSUMED: logged-out invite flow (sign up or log in first, then the invite is applied) is specified in F2-1.
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
-- API contract (TASK-001) did not exist yet. The TASK-002 spec names 403 (member on admin action) and 404 (cross-organization access); stories use no other HTTP code. ASSUMED: 401 for a missing or invalid login token (standard meaning; named in neither TASK-002 nor the brief). Recheck all codes against the contract when it lands.
+- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Recheck once the contract is merged to main.
 - Contract check (TASK-039): api-contract.yaml (branch feature/TASK-001-stack-and-contracts, not yet on main) now exists. It defines invite preview (public, organization name only, 404 for an unknown token, 429 rate limited) and one persistent token per organization (43 characters, consistent with the 32 minimum here). Recheck once it is merged to main.
