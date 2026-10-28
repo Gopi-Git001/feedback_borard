@@ -39,7 +39,7 @@ npm run lint
 npm run test
 npm run build
 ```
-Node used for the evidence run: 24.22.1 (the stack pin). The package engines also accept Node ^22.12 / >=22.22. This VM's default `node` on `PATH` is v22.23.4 (`/exec-daemon/node`); the evidence run put `~/.nvm/versions/node/v24.22.1/bin` first.
+The evidence run used Node 24.22.1 (the stack pin). `frontend/package.json` has no `engines` field, so the package does not accept or reject a Node version. react-router 8.5.1 needs a newer Node than 20 (`npm view react-router@8.5.1 engines` is `{"node":">=22.22.0"}`). This VM's default `node` on `PATH` was v22.23.4 (`/exec-daemon/node`); the evidence run put `~/.nvm/versions/node/v24.22.1/bin` first.
 
 ## Test results
 Environment: Node v24.22.1, npm 11.19.1 (the npm that ships with that Node). `npm install` that wrote `package-lock.json` was the VM's npm 10.9.9. Lockfile was not rewritten by the later script runs.
@@ -77,7 +77,7 @@ feedback-board-frontend@0.0.0
 > feedback-board-frontend@0.0.0 test
 > vitest run
 
- RUN  v5.0.5 /workspace/frontend
+ RUN  v5.0.5 frontend/
 
  Test Files  1 passed (1)
       Tests  7 passed (7)
@@ -114,7 +114,7 @@ dist/assets/index-DvguPBqz.js   314.36 kB │ gzip: 99.16 kB
 - **Branch base is 11497e9**, as dispatched. That commit is an ancestor of `origin/main`. `api-contract.yaml` and `stack.md` are the same on 11497e9 and `origin/main` at fetch time (`92dedd6`). `plan.md` differs by a few lines on `origin/main`; this branch does not include that later edit.
 - **Versions.** Every direct dependency is a `~` range from stack.md's frontend table or the Attempt 2 addendum (Vitest and typescript-eslint are final there). Resolved versions are the exact verified versions in that file. TanStack Query `~5.105.0` is pinned and final in stack.md, and it is not installed: this task has no data fetching. Adding it unused would be a dependency with no caller. TASK-012 can add it.
 - **No OpenAPI generator.** stack.md says none is pinned (`openapi-typescript` 7.13.0 peers TypeScript 5; `@hey-api/openapi-ts` is 0.x). Types are hand-written. A vitest check parses the YAML for operation ids, methods, paths, `components/schemas` names, and the `ErrorResponse` code enum so a rename in the contract fails the test. Query parameters `type` and `status` on `GET /posts` are represented as `ListPostsQuery`. That name is not a schema in the file; the fields are the operation's parameters. 415 is described as a convention and is not listed per operation, so it is not a response key on `ApiOperationMap`. `GET /api/v1/health` is not in the contract file, so it is not typed.
-- **React Router.** Checked on 2026-10-28:
+- **React Router.** Checked on 2026-10-27 (America/Chicago):
   - `npm view react-router@8.5.1` returns version 8.5.1. Dist-tag `latest` is 8.5.1. Engines: `node >= 22.22.0`. Peers: `react` and `react-dom` `>=19.2.7`.
   - https://reactrouter.com/start/modes (docs selector "latest (8.5.1)") defines three modes. Declarative uses `BrowserRouter`. Data uses `createBrowserRouter` and `RouterProvider`. Framework uses `@react-router/dev`. The page does not say "library mode".
   - https://reactrouter.com/start/data/installation (marked data mode) installs `react-router` and renders with `createBrowserRouter` from `react-router` and `RouterProvider` from `react-router/dom`.
@@ -135,5 +135,6 @@ dist/assets/index-DvguPBqz.js   314.36 kB │ gzip: 99.16 kB
 
 ## Suggested follow-up tasks
 - TASK-012: route table, auth session, API client (TanStack Query is already pinned for that).
+- TASK-012 and later, not done in this fix: extend the contract-drift test (enum values, per-schema field names and `required`, per-operation status codes and body schema refs), pin `@types/node`, and add a11y lint rules.
 - TASK-007: frontend Dockerfile and nginx. Not started here.
 - TASK-008: run these four scripts in CI.
