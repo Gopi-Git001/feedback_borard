@@ -15,10 +15,14 @@ info:
       request. Each operation lists its allowed roles in `x-roles`; `x-features` links the brief's F-ids.
     - **Cross-organization access returns 404**, never 403: a post or comment that exists in another
       organization is indistinguishable from one that does not exist (`POST_NOT_FOUND`).
-    - **Status codes:** 200 OK, 201 Created, 204 No Content, 400 validation error, 401 unauthenticated,
-      403 forbidden (known resource type, wrong role, or no organization yet), 404 not found (including
-      other-organization resources), 409 conflict, 422 business-rule violation, 429 rate limited.
-      FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`.
+    - **Status codes:** 200 OK, 201 Created, 204 No Content, 400 validation error, 401 unauthenticated (**ASSUMED**: the
+      brief and stories name only 403 and 404; 401 for missing/invalid token is the standard reading),
+      403 forbidden (wrong role; or no organization yet, **ASSUMED**, see below), 404 not found (including
+      other-organization resources), 409 conflict, 429 rate limited (approved per Orchestrator message 2026-10-27, relayed from the human).
+      FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`; no operation returns 422.
+    - **Order of checks:** authentication (401), then resource lookup scoped to the caller's organization
+      (404, including "exists in another organization"), then role (403). A member who targets an admin-only
+      operation on a post of another organization gets 404, not 403, so existence is never revealed.
     - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). `email` is compared case-insensitively.
     - **Error body** for every non-2xx: `{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`.
     - **No pagination in the MVP** (stories F7-1 and F6-1: all matching posts / comments are returned in one
@@ -26,15 +30,30 @@ info:
       breaking clients. Adding pagination is a follow-up that needs a contract version bump.
     - **Auth:** `Authorization: Bearer <access_token>` (15 min). The refresh token lives in an
       HttpOnly cookie `refresh_token` (7 days, `Path=/api/v1/auth`) and is never visible to JavaScript.
-    - Users who have no organization yet (just signed up) may call only: auth endpoints,
-      `POST /organizations`, `POST /invites/{token}/accept`, `GET /invites/{token}`.
-      Every other endpoint returns 403 `ORG_REQUIRED` for them.
+      Token verification (ADR-002): `jwt.decode(..., algorithms=["HS256"], issuer="feedback-board",
+      audience="feedback-board-api", options={"require": ["exp", "iat", "sub", "iss", "aud", "typ", "jti"]})`,
+      then `typ` must equal `access` (or `refresh` on `/auth/refresh`). `org` is **not** in the required list
+      because it is absent until the user creates or joins an organization; every organization endpoint checks
+      for it and answers 403 `ORG_REQUIRED` when it is missing. `jti` is required to be present but not yet used
+      (no revocation table in the MVP).
+    - **ASSUMED (not in the stories):** users who have no organization yet (just signed up) may call only:
+      auth endpoints, `POST /organizations`, `POST /invites/{token}/accept`, `GET /invites/{token}`.
+      Every other endpoint returns 403 `ORG_REQUIRED` for them. The 401 rule above is also ASSUMED.
+    - **Invite token handling (ADR-003):** the invite token is a bearer secret that appears in the paths
+      `/invites/{token}` and `/invites/{token}/accept`. It must be redacted from access logs, error tracking
+      and reverse-proxy logs, and invite responses are `Cache-Control: no-store`. A malformed token (wrong
+      length or characters) is answered with 404 `INVITE_NOT_FOUND`, the same as an unknown token, never 400.
+    - **Extras beyond the stories/brief:** `POST /auth/refresh` and `POST /auth/logout` go beyond story F1-1
+      (F1-1 lists logout and session expiry as out of scope). They are approved per Orchestrator message 2026-10-27, relayed from the human, so they are not ASSUMED
+      any more, but they are not mapped to a story either (`x-features: []`, `x-extra: true`).
+      `display_name` is required at signup: approved per Orchestrator message 2026-10-27, relayed from the human; ba-bot will update the stories to match.
+      Rate limiting (429) is approved per Orchestrator message 2026-10-27, relayed from the human; limits are chosen by backend-bot.
 servers:
   - url: /api/v1
     description: Relative to the site origin. In docker compose the frontend proxies /api to the backend (http://localhost:8000 when called directly).
 tags:
   - name: Auth
-    description: Sign up, log in, token refresh, current user (F1).
+    description: Sign up, log in, current user (F1). Token refresh and logout are approved extras beyond F1-1.
   - name: Organizations
     description: Create the organization and read the current one (F2).
   - name: Invites
@@ -115,8 +134,11 @@ paths:
       tags: [Auth]
       operationId: refreshToken
       summary: Get a new access token using the refresh cookie
-      description: Reads the `refresh_token` cookie, returns a new access token and rotates the cookie. No request body. 401 if the cookie is missing, invalid or expired.
-      x-features: [F1]
+      description: |
+        **EXTRA, beyond story F1-1** (F1-1 puts session expiry out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
+        Reads the `refresh_token` cookie, returns a new access token and rotates the cookie. No request body. 401 if the cookie is missing, invalid or expired.
+      x-extra: true
+      x-features: []
       x-roles: [public]
       security:
         - refreshCookie: []
@@ -140,8 +162,11 @@ paths:
       tags: [Auth]
       operationId: logout
       summary: Log out (clears the refresh cookie)
-      description: Clears the refresh cookie. Idempotent. The cookie is HttpOnly so only the server can clear it. Tokens are stateless, so an already issued access token stays valid until it expires (max 15 min), see ADR-002.
-      x-features: [F1]
+      description: |
+        **EXTRA, beyond story F1-1** (F1-1 puts logout out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
+        Clears the refresh cookie. Idempotent. The cookie is HttpOnly so only the server can clear it. Tokens are stateless, so an already issued access token stays valid until it expires (max 15 min), see ADR-002.
+      x-extra: true
+      x-features: []
       x-roles: [public]
       security: []
       responses:
@@ -255,7 +280,8 @@ paths:
       tags: [Invites]
       operationId: previewInvite
       summary: Preview an invite (public)
-      description: Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown token returns 404 `INVITE_NOT_FOUND`. Rate limited.
+      description: |
+        Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown or malformed token returns 404 `INVITE_NOT_FOUND` (message `Invite link is invalid`), never 400. Rate limited (429, approved). The response is `Cache-Control: no-store` and the token must be redacted from logs (ADR-003).
       x-features: [F2, F3]
       x-roles: [public]
       security: []
@@ -591,7 +617,7 @@ components:
               details:
                 - { field: title, message: 'String should have at most 120 characters' }
     Unauthorized:
-      description: 401 Missing, invalid or expired token, or wrong credentials (`UNAUTHENTICATED`, `INVALID_CREDENTIALS`).
+      description: '401 (**ASSUMED**, see conventions) Missing, invalid or expired token, or wrong credentials (`UNAUTHENTICATED`, `INVALID_CREDENTIALS`).'
       headers:
         WWW-Authenticate:
           schema: { type: string }
@@ -602,7 +628,7 @@ components:
           example:
             error: { code: UNAUTHENTICATED, message: Authentication required., details: [] }
     Forbidden:
-      description: 403 Caller is authenticated but not allowed (`FORBIDDEN` wrong role, `ORG_REQUIRED` no organization yet).
+      description: '403 Caller is authenticated but not allowed (`FORBIDDEN` wrong role; `ORG_REQUIRED` no organization yet, **ASSUMED**: no story or brief text defines it).'
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -623,7 +649,7 @@ components:
           example:
             error: { code: EMAIL_TAKEN, message: Email already registered, details: [] }
     RateLimited:
-      description: 429 Too many requests (`RATE_LIMITED`).
+      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per IP to signup, login, refresh, logout and invite preview; limits chosen by backend-bot.'
       headers:
         Retry-After:
           schema: { type: integer }
@@ -655,7 +681,6 @@ components:
                 - INVITE_NOT_FOUND
                 - EMAIL_TAKEN
                 - ALREADY_IN_ORGANIZATION
-                - BUSINESS_RULE_VIOLATION
                 - RATE_LIMITED
                 - INTERNAL_ERROR
             message:
