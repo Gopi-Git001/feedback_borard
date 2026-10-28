@@ -1,5 +1,5 @@
 # Handoff: TASK-004 Backend skeleton
-Bot: backend-bot   Attempt: 2 (review fixes)   PR: (link filled after open)   Branch: fix/TASK-004-review-fixes
+Bot: backend-bot   Attempt: 2 (review fixes)   PR: https://github.com/Gopi-Git001/feedback_borard/pull/26   Branch: fix/TASK-004-review-fixes
 
 Original delivery merged as `364d9b9` (PR #22) before review. This attempt answers qa-bot's post-merge review (https://github.com/Gopi-Git001/feedback_borard/pull/22#issuecomment-6459670465) and security-bot P22-2 and P22-3. P22-1 is not built here.
 
