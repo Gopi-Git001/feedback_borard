@@ -54,8 +54,8 @@ C "$POSTGRES_USER" "$POSTGRES_PASSWORD" -c "select rolname, rolsuper, rolbypassr
 C "$POSTGRES_USER" "$POSTGRES_PASSWORD" -c "create table probe(id serial primary key, v text)"   # owner: CREATE TABLE
 C "$APP_DB_USER" "$APP_DB_PASSWORD" -c "create table app_made(id int)"                            # app: permission denied for schema public
 C "$APP_DB_USER" "$APP_DB_PASSWORD" -c "insert into probe(v) values ('x')" -c "select * from probe"  # app: DML works
-C "$POSTGRES_USER" "$POSTGRES_PASSWORD" -c "create role throwaway login password 'throwaway-test-pw'"
-C throwaway throwaway-test-pw -c "select 1"        # criterion 7: FATAL permission denied for database (no CONNECT)
+C "$POSTGRES_USER" "$POSTGRES_PASSWORD" -c "create role throwaway login password '<throwaway-pw>'"
+C throwaway <throwaway-pw> -c "select 1"        # criterion 7: FATAL permission denied for database (no CONNECT)
 docker compose exec db sh /docker-entrypoint-initdb.d/01-roles.sh   # criterion 7: manual re-run on the live db, exits 0
 C "$POSTGRES_USER" "$POSTGRES_PASSWORD" -c "create table alembic_version(version_num text)"      # criterion 9
 docker compose exec db sh /opt/db-ops/revoke-app-on-alembic-version.sh
@@ -273,7 +273,7 @@ psql: error: connection to server at "db" (172.18.0.2), port 5432 failed: FATAL:
  original pw restored
 (1 row)
 ```
-**Criterion 11 (the password does not reach the server log, also on failure).** Failure forced with `PGOPTIONS="-c default_transaction_read_only=on"`: every statement that changes a role then fails (`cannot execute ALTER ROLE in a read-only transaction`) while the session `SET` commands still work. The control is a copy of the script with the three `SET log_*` lines removed. The failing statement is `ALTER ROLE ... PASSWORD :'app_password'`; the `CREATE ROLE` statement carries no password. Each run used its own random test password (control `ctl-...`, real script `real-...`).
+**Criterion 11 (the password does not reach the server log, also on failure).** Failure forced with `PGOPTIONS="-c default_transaction_read_only=on"`: every statement that changes a role then fails (`cannot execute ALTER ROLE in a read-only transaction`) while the session `SET` commands still work. The control is a copy of the script with the three `SET log_*` lines removed. The failing statement is `ALTER ROLE ... PASSWORD :'app_password'`; the `CREATE ROLE` statement carries no password. Each run used its own random test password (control `<ctl-pw>`, real script `<real-pw>`).
 ```
 -- control (script copy WITHOUT the SET log_* lines), forced failure with PGOPTIONS=-c default_transaction_read_only=on:
 script exit=3
@@ -288,15 +288,15 @@ SET
 ERROR:  cannot execute ALTER ROLE in a read-only transaction
 server log lines containing the real-script password: 0
 last 3 server log lines (the control's STATEMENT, then the real script's ERROR with no STATEMENT line after it):
-db-1  | 2026-10-28 02:58:25.885 UTC [3571] STATEMENT:  ALTER ROLE "feedback_app" WITH LOGIN PASSWORD 'ctl-52e410d890e882277dd3a548'
+db-1  | 2026-10-28 02:58:25.885 UTC [3571] STATEMENT:  ALTER ROLE "feedback_app" WITH LOGIN PASSWORD '<ctl-pw>'
 db-1  | 	  NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 db-1  | 2026-10-28 02:58:27.161 UTC [3586] ERROR:  cannot execute ALTER ROLE in a read-only transaction
 -- whole server log, every password used in this run (owner, app, resync, control, real-script):
   0 <owner-pw>
   0 <app-pw>
-  0 resync-test-pw
-  1 ctl-52e410d890e882277dd3a548
-  0 real-52e410d890e882277dd3a548
+  0 <resync-pw>
+  1 <ctl-pw>
+  0 <real-pw>
 -- guard: APP_DB_USER equal to POSTGRES_USER is refused before psql runs:
 01-roles.sh: APP_DB_USER must differ from POSTGRES_USER (the owner role)
 exit=2
@@ -383,7 +383,7 @@ no feedback volumes
 no feedback networks
 ls: cannot access '.env': No such file or directory (deleted)
 ```
-Throwaway objects (`probe`, `alembic_version`, role `throwaway`) were dropped; throwaway passwords (`throwaway-test-pw`, `ctl-...`, `real-...`, the re-sync value) are test values that exist only in the test commands, not in the repo.
+Throwaway objects (`probe`, `alembic_version`, role `throwaway`) were dropped; throwaway passwords (`<throwaway-pw>`, `<ctl-pw>`, `<real-pw>`, `<resync-pw>`) stand in for test values that exist only in the test commands, not in the repo.
 
 
 ## Environment variables in `.env.example` and where each name comes from
