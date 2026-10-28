@@ -16,7 +16,7 @@ As an admin, I want to delete a post, so that I can remove spam, duplicates or o
 - Admin may only delete posts of their own organization.
 
 ## UI notes
-- Admin-only "Delete" control on the post page; clicking it asks for confirmation ("Delete this post?" with Delete / Cancel). Cancel leaves the post unchanged. (Confirmation step is a UI safeguard; see handoff Open questions.)
+- Admin-only "Delete" control on the post page; clicking it asks for confirmation (ASSUMED text: "Delete this post?" with Delete / Cancel). Cancel leaves the post unchanged. (Confirmation step is a UI safeguard; see handoff Open questions.)
 
 ## Data touched
 - Post (removed), Comment (removed with post), Vote (removed with post).
@@ -25,7 +25,7 @@ As an admin, I want to delete a post, so that I can remove spam, duplicates or o
 Deleting comments, restoring deleted posts, bulk delete, soft delete / audit trail, members deleting own posts (post-MVP).
 
 ## Assumptions / Questions
-- ASSUMED: hard delete with cascade of comments and votes; confirmation dialog before delete.
+- ASSUMED: hard delete with cascade of comments and votes; confirmation dialog before delete (texts "Delete this post?", "Delete", "Cancel" are ASSUMED).
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
-- ASSUMED (all stories): API contract (TASK-001) did not exist yet; HTTP codes are used only where the task spec names them (401/403/404); recheck against the contract when it lands.
+- API contract (TASK-001) did not exist yet. The TASK-002 spec names 403 (member on admin action) and 404 (cross-organization access); stories use no other HTTP code. ASSUMED: 401 for a missing or invalid login token (standard meaning; named in neither TASK-002 nor the brief). Recheck all codes against the contract when it lands.
