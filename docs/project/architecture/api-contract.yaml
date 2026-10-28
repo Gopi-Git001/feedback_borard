@@ -1,0 +1,868 @@
+openapi: 3.0.3
+info:
+  title: Team Feedback Board API
+  version: 1.0.0
+  description: |
+    Contract for the Team Feedback Board backend (FastAPI) and frontend (React).
+    Status: Proposed, awaiting Orchestrator approval (TASK-001). Changing an approved
+    contract needs an ADR and the Orchestrator's go-ahead.
+
+    ## Conventions
+    - Base path `/api/v1`. JSON only. Timestamps ISO 8601 UTC (`2026-10-27T18:30:00Z`). IDs are UUID strings.
+    - **Tenant comes from the access token** (`org` claim, ADR-002), never from a request field.
+      No request body, query or path parameter carries an organization id.
+    - **Roles:** `admin` and `member`. The role of the caller is read from the database on each
+      request. Each operation lists its allowed roles in `x-roles`; `x-features` links the brief's F-ids.
+    - **Cross-organization access returns 404**, never 403: a post or comment that exists in another
+      organization is indistinguishable from one that does not exist (`POST_NOT_FOUND`).
+    - **Status codes:** 200 OK, 201 Created, 204 No Content, 400 validation error, 401 unauthenticated,
+      403 forbidden (known resource type, wrong role, or no organization yet), 404 not found (including
+      other-organization resources), 409 conflict, 422 business-rule violation, 429 rate limited.
+      FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`.
+    - **Error body** for every non-2xx: `{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`.
+    - **Pagination:** every list uses `limit` (1-100, default 20) and an opaque `cursor`; the response
+      has `items` and `next_cursor` (`null` on the last page). Treat the cursor as an opaque string.
+    - **Auth:** `Authorization: Bearer <access_token>` (15 min). The refresh token lives in an
+      HttpOnly cookie `refresh_token` (7 days, `Path=/api/v1/auth`) and is never visible to JavaScript.
+    - Users who have no organization yet (just signed up) may call only: auth endpoints,
+      `POST /organizations`, `POST /invites/{token}/accept`, `GET /invites/{token}`.
+      Every other endpoint returns 403 `ORG_REQUIRED` for them.
+servers:
+  - url: /api/v1
+    description: Relative to the site origin. In docker compose the frontend proxies /api to the backend (http://localhost:8000 when called directly).
+tags:
+  - name: Auth
+    description: Sign up, log in, token refresh, current user (F1).
+  - name: Organizations
+    description: Create the organization and read the current one (F2).
+  - name: Invites
+    description: Shareable invite link, preview and accept (F2, F3).
+  - name: Posts
+    description: Create, list and filter the board, change status, delete (F4, F7, F8, F9).
+  - name: Votes
+    description: One upvote per user per post (F5).
+  - name: Comments
+    description: List and create comments on a post (F6).
+security:
+  - bearerAuth: []
+paths:
+  /auth/signup:
+    post:
+      tags: [Auth]
+      operationId: signup
+      summary: Sign up with email and password
+      description: Creates a user with no organization. Returns an access token (no `org` claim yet) and sets the refresh cookie.
+      x-features: [F1]
+      x-roles: [public]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+            example: { email: ana@example.com, password: correct-horse-battery, display_name: Ana }
+      responses:
+        '201':
+          description: User created and signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: bearer
+                expires_in: 900
+                user: { id: 0192f1c0-0000-7000-8000-000000000001, email: ana@example.com, display_name: Ana }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in with email and password
+      description: Always answers `INVALID_CREDENTIALS` (401) for a wrong password or unknown email. Sets the refresh cookie. The access token carries `org` if the user belongs to an organization.
+      x-features: [F1]
+      x-roles: [public]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example: { email: ana@example.com, password: correct-horse-battery }
+      responses:
+        '200':
+          description: Signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: bearer
+                expires_in: 900
+                user: { id: 0192f1c0-0000-7000-8000-000000000001, email: ana@example.com, display_name: Ana }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Get a new access token using the refresh cookie
+      description: Reads the `refresh_token` cookie, returns a new access token and rotates the cookie. No request body. 401 if the cookie is missing, invalid or expired.
+      x-features: [F1]
+      x-roles: [public]
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: New access token issued, refresh cookie rotated.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: bearer
+                expires_in: 900
+                user: { id: 0192f1c0-0000-7000-8000-000000000001, email: ana@example.com, display_name: Ana }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Log out (clears the refresh cookie)
+      description: Clears the refresh cookie. Idempotent. The cookie is HttpOnly so only the server can clear it. Tokens are stateless, so an already issued access token stays valid until it expires (max 15 min), see ADR-002.
+      x-features: [F1]
+      x-roles: [public]
+      security: []
+      responses:
+        '204':
+          description: Cookie cleared.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: Current user, organization and role
+      description: '`organization` and `role` are `null` for a user who has no organization yet.'
+      x-features: [F1, F2]
+      x-roles: [admin, member, no-organization]
+      responses:
+        '200':
+          description: The signed-in user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+              example:
+                user: { id: 0192f1c0-0000-7000-8000-000000000001, email: ana@example.com, display_name: Ana }
+                organization: { id: 0192f1c0-0000-7000-8000-0000000000a1, name: Platform Team, created_at: '2026-10-27T18:30:00Z' }
+                role: admin
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /organizations:
+    post:
+      tags: [Organizations]
+      operationId: createOrganization
+      summary: Create an organization and become its admin
+      description: |
+        Allowed only for a user without an organization (one organization per user in the MVP);
+        otherwise 409 `ALREADY_IN_ORGANIZATION`. The response contains a **new access token that
+        includes the `org` claim**, and the refresh cookie is rotated. The client must replace its token.
+      x-features: [F2]
+      x-roles: [no-organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrganizationRequest' }
+            example: { name: Platform Team }
+      responses:
+        '201':
+          description: Organization created; caller is admin.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationSession' }
+              example:
+                organization: { id: 0192f1c0-0000-7000-8000-0000000000a1, name: Platform Team, created_at: '2026-10-27T18:30:00Z' }
+                role: admin
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: bearer
+                expires_in: 900
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /organizations/current:
+    get:
+      tags: [Organizations]
+      operationId: getCurrentOrganization
+      summary: Get the caller's organization
+      description: The organization is the one in the token; there is no organization id in the path.
+      x-features: [F2]
+      x-roles: [admin, member]
+      responses:
+        '200':
+          description: The current organization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDetail' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000a1
+                name: Platform Team
+                created_at: '2026-10-27T18:30:00Z'
+                member_count: 3
+                role: admin
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /invites:
+    post:
+      tags: [Invites]
+      operationId: createInvite
+      summary: Create an invite link for the caller's organization
+      description: Admin only. Returns the raw `token` **once**; only its hash is stored. The link is reusable until revoked (revocation is not in the MVP). The frontend builds the link as `<frontend-origin>/invite/<token>`.
+      x-features: [F3]
+      x-roles: [admin]
+      responses:
+        '201':
+          description: Invite created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invite' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000b1
+                token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw
+                created_at: '2026-10-27T18:35:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /invites/{token}:
+    get:
+      tags: [Invites]
+      operationId: previewInvite
+      summary: Preview an invite (public)
+      description: Public, so the invited person can see which organization they would join before signing up. Returns only the organization name. Unknown or revoked token returns 404 `INVITE_NOT_FOUND`. Rate limited.
+      x-features: [F2, F3]
+      x-roles: [public]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/InviteToken'
+      responses:
+        '200':
+          description: Invite is valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitePreview' }
+              example: { organization_name: Platform Team }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /invites/{token}/accept:
+    post:
+      tags: [Invites]
+      operationId: acceptInvite
+      summary: Join the organization behind an invite as a member
+      description: |
+        For a signed-in user without an organization. Creates a `member` membership. The invite is
+        not consumed. Returns a **new access token with the `org` claim** and rotates the refresh
+        cookie. 409 `ALREADY_IN_ORGANIZATION` if the user already belongs to an organization.
+      x-features: [F2, F3]
+      x-roles: [no-organization]
+      parameters:
+        - $ref: '#/components/parameters/InviteToken'
+      responses:
+        '200':
+          description: Joined the organization.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationSession' }
+              example:
+                organization: { id: 0192f1c0-0000-7000-8000-0000000000a1, name: Platform Team, created_at: '2026-10-27T18:30:00Z' }
+                role: member
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: bearer
+                expires_in: 900
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /posts:
+    get:
+      tags: [Posts]
+      operationId: listPosts
+      summary: List posts of the caller's organization, most votes first
+      description: |
+        Sorted by `vote_count` descending, then `created_at` descending, then `id` descending
+        (stable order). Optional filters `type` and `status` can be combined. Cursor pagination:
+        because votes change between requests, a post can occasionally appear on two pages or be
+        skipped; clients should de-duplicate by `id`.
+      x-features: [F7]
+      x-roles: [admin, member]
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/PostType' }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/PostStatus' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+              example:
+                items:
+                  - id: 0192f1c0-0000-7000-8000-0000000000c1
+                    title: Dark mode
+                    description: Please add a dark theme.
+                    type: idea
+                    status: Planned
+                    vote_count: 7
+                    comment_count: 2
+                    has_voted: true
+                    author: { id: 0192f1c0-0000-7000-8000-000000000001, display_name: Ana }
+                    created_at: '2026-10-27T18:40:00Z'
+                    updated_at: '2026-10-27T19:00:00Z'
+                next_cursor: eyJ2Ijo3LCJjIjoiMjAyNi0xMC0yN1QxODo0MDowMFoiLCJpIjoiMDE5MmYxYzAifQ
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Posts]
+      operationId: createPost
+      summary: Create a post
+      description: Status starts as `New`. The author is the caller and the organization is the one in the token.
+      x-features: [F4]
+      x-roles: [admin, member]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePostRequest' }
+            example: { title: Dark mode, description: Please add a dark theme., type: idea }
+      responses:
+        '201':
+          description: Post created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000c1
+                title: Dark mode
+                description: Please add a dark theme.
+                type: idea
+                status: New
+                vote_count: 0
+                comment_count: 0
+                has_voted: false
+                author: { id: 0192f1c0-0000-7000-8000-000000000001, display_name: Ana }
+                created_at: '2026-10-27T18:40:00Z'
+                updated_at: '2026-10-27T18:40:00Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /posts/{post_id}:
+    get:
+      tags: [Posts]
+      operationId: getPost
+      summary: Get one post
+      description: 404 `POST_NOT_FOUND` if the post does not exist **or belongs to another organization**.
+      x-features: [F4, F7]
+      x-roles: [admin, member]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: The post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000c1
+                title: Dark mode
+                description: Please add a dark theme.
+                type: idea
+                status: Planned
+                vote_count: 7
+                comment_count: 2
+                has_voted: true
+                author: { id: 0192f1c0-0000-7000-8000-000000000001, display_name: Ana }
+                created_at: '2026-10-27T18:40:00Z'
+                updated_at: '2026-10-27T19:00:00Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Posts]
+      operationId: deletePost
+      summary: Delete a post (admin only)
+      description: Hard delete; its votes and comments are deleted with it. A member gets 403 `FORBIDDEN`; a post of another organization gets 404 `POST_NOT_FOUND` (checked before the role, so existence is never revealed across organizations).
+      x-features: [F9]
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '204':
+          description: Deleted.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /posts/{post_id}/status:
+    patch:
+      tags: [Posts]
+      operationId: updatePostStatus
+      summary: Change a post's status (admin only)
+      description: An admin may set any of the four statuses in any direction (ASSUMED in brief). Setting the current status again is a no-op that returns 200.
+      x-features: [F8]
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePostStatusRequest' }
+            example: { status: In Progress }
+      responses:
+        '200':
+          description: Updated post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000c1
+                title: Dark mode
+                description: Please add a dark theme.
+                type: idea
+                status: In Progress
+                vote_count: 7
+                comment_count: 2
+                has_voted: true
+                author: { id: 0192f1c0-0000-7000-8000-000000000001, display_name: Ana }
+                created_at: '2026-10-27T18:40:00Z'
+                updated_at: '2026-10-27T19:10:00Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /posts/{post_id}/vote:
+    put:
+      tags: [Votes]
+      operationId: addVote
+      summary: Upvote a post (one per user per post)
+      description: Idempotent. If the caller already voted, nothing changes and the current state is returned with 200 (no 409). Uniqueness is enforced by `UNIQUE (user_id, post_id)`.
+      x-features: [F5]
+      x-roles: [admin, member]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Vote state after the call.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteState' }
+              example: { post_id: 0192f1c0-0000-7000-8000-0000000000c1, vote_count: 8, has_voted: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Votes]
+      operationId: removeVote
+      summary: Remove the caller's upvote
+      description: Idempotent. If the caller has no vote, nothing changes and the current state is returned with 200.
+      x-features: [F5]
+      x-roles: [admin, member]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Vote state after the call.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteState' }
+              example: { post_id: 0192f1c0-0000-7000-8000-0000000000c1, vote_count: 7, has_voted: false }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /posts/{post_id}/comments:
+    get:
+      tags: [Comments]
+      operationId: listComments
+      summary: List comments of a post, oldest first
+      description: Ordered by `created_at` ascending, then `id` ascending. 404 `POST_NOT_FOUND` if the post is missing or in another organization.
+      x-features: [F6]
+      x-roles: [admin, member]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of comments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentPage' }
+              example:
+                items:
+                  - id: 0192f1c0-0000-7000-8000-0000000000d1
+                    post_id: 0192f1c0-0000-7000-8000-0000000000c1
+                    body: Would love this too.
+                    author: { id: 0192f1c0-0000-7000-8000-000000000002, display_name: Ben }
+                    created_at: '2026-10-27T18:50:00Z'
+                next_cursor: null
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Comments]
+      operationId: createComment
+      summary: Comment on a post
+      x-features: [F6]
+      x-roles: [admin, member]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommentRequest' }
+            example: { body: Would love this too. }
+      responses:
+        '201':
+          description: Comment created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+              example:
+                id: 0192f1c0-0000-7000-8000-0000000000d1
+                post_id: 0192f1c0-0000-7000-8000-0000000000c1
+                body: Would love this too.
+                author: { id: 0192f1c0-0000-7000-8000-000000000002, display_name: Ben }
+                created_at: '2026-10-27T18:50:00Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token (HS256, 15 min). Claims `sub`, `org`, `typ`, `iat`, `exp`, `jti`, `iss`, `aud` (ADR-002).
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: HttpOnly refresh token cookie (7 days, Path=/api/v1/auth).
+  headers:
+    RefreshCookie:
+      description: '`refresh_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=604800` (cleared with Max-Age=0 on logout).'
+      schema:
+        type: string
+  parameters:
+    PostId:
+      name: post_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      example: 0192f1c0-0000-7000-8000-0000000000c1
+    InviteToken:
+      name: token
+      in: path
+      required: true
+      description: Long random invite token (at least 32 random bytes, URL-safe base64).
+      schema: { type: string, minLength: 32, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from `next_cursor` of the previous page.
+      schema: { type: string, maxLength: 512 }
+  responses:
+    ValidationError:
+      description: 400 Request failed validation (bad body, query, path or cursor).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Request validation failed.
+              details:
+                - { field: title, message: 'String should have at most 140 characters' }
+    Unauthorized:
+      description: 401 Missing, invalid or expired token, or wrong credentials (`UNAUTHENTICATED`, `INVALID_CREDENTIALS`).
+      headers:
+        WWW-Authenticate:
+          schema: { type: string }
+          description: Bearer
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: UNAUTHENTICATED, message: Authentication required., details: [] }
+    Forbidden:
+      description: 403 Caller is authenticated but not allowed (`FORBIDDEN` wrong role, `ORG_REQUIRED` no organization yet).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: FORBIDDEN, message: Admin role required., details: [] }
+    NotFound:
+      description: 404 Resource does not exist **or belongs to another organization** (`POST_NOT_FOUND`, `INVITE_NOT_FOUND`). The two cases are indistinguishable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: POST_NOT_FOUND, message: Post not found., details: [] }
+    Conflict:
+      description: 409 State conflict (`EMAIL_TAKEN`, `ALREADY_IN_ORGANIZATION`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: EMAIL_TAKEN, message: An account with this email already exists., details: [] }
+    RateLimited:
+      description: 429 Too many requests (`RATE_LIMITED`).
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: RATE_LIMITED, message: Too many requests. Try again later., details: [] }
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+              enum:
+                - VALIDATION_ERROR
+                - UNAUTHENTICATED
+                - INVALID_CREDENTIALS
+                - FORBIDDEN
+                - ORG_REQUIRED
+                - POST_NOT_FOUND
+                - INVITE_NOT_FOUND
+                - EMAIL_TAKEN
+                - ALREADY_IN_ORGANIZATION
+                - BUSINESS_RULE_VIOLATION
+                - RATE_LIMITED
+                - INTERNAL_ERROR
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    PostType:
+      type: string
+      enum: [idea, bug]
+    PostStatus:
+      type: string
+      enum: [New, Planned, In Progress, Done]
+    Role:
+      type: string
+      enum: [admin, member]
+    UserPublic:
+      type: object
+      description: Minimal author info shown to members of the same organization. Never includes email.
+      required: [id, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, minLength: 1, maxLength: 80 }
+    User:
+      type: object
+      description: The caller's own account (includes email; returned only to the owner).
+      required: [id, email, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, maxLength: 254 }
+        display_name: { type: string, minLength: 1, maxLength: 80 }
+    SignupRequest:
+      type: object
+      required: [email, password, display_name]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, format: password, minLength: 10, maxLength: 128 }
+        display_name: { type: string, minLength: 1, maxLength: 80 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, format: password, minLength: 1, maxLength: 128 }
+    AuthResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [bearer] }
+        expires_in: { type: integer, description: Seconds until the access token expires (900). }
+        user: { $ref: '#/components/schemas/User' }
+    Organization:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        created_at: { type: string, format: date-time }
+    OrganizationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Organization'
+        - type: object
+          required: [member_count, role]
+          properties:
+            member_count: { type: integer, minimum: 1 }
+            role: { $ref: '#/components/schemas/Role' }
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+    OrganizationSession:
+      type: object
+      description: Result of creating or joining an organization. Contains a new access token that carries the `org` claim.
+      required: [organization, role, access_token, token_type, expires_in]
+      properties:
+        organization: { $ref: '#/components/schemas/Organization' }
+        role: { $ref: '#/components/schemas/Role' }
+        access_token: { type: string }
+        token_type: { type: string, enum: [bearer] }
+        expires_in: { type: integer }
+    Me:
+      type: object
+      required: [user, organization, role]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        organization:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Organization'
+        role:
+          type: string
+          nullable: true
+          enum: [admin, member, null]
+          description: '`null` while the user has no organization.'
+    Invite:
+      type: object
+      required: [id, token, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string, description: 'Shown only in this response; only a hash is stored.', minLength: 32, maxLength: 128 }
+        created_at: { type: string, format: date-time }
+    InvitePreview:
+      type: object
+      required: [organization_name]
+      properties:
+        organization_name: { type: string }
+    CreatePostRequest:
+      type: object
+      required: [title, type]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 140 }
+        description: { type: string, maxLength: 5000, default: '' }
+        type: { $ref: '#/components/schemas/PostType' }
+    UpdatePostStatusRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/PostStatus' }
+    Post:
+      type: object
+      required: [id, title, description, type, status, vote_count, comment_count, has_voted, author, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 140 }
+        description: { type: string, maxLength: 5000 }
+        type: { $ref: '#/components/schemas/PostType' }
+        status: { $ref: '#/components/schemas/PostStatus' }
+        vote_count: { type: integer, minimum: 0 }
+        comment_count: { type: integer, minimum: 0 }
+        has_voted: { type: boolean, description: Whether the caller has upvoted this post. }
+        author: { $ref: '#/components/schemas/UserPublic' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PostPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Post' }
+        next_cursor:
+          type: string
+          nullable: true
+    VoteState:
+      type: object
+      required: [post_id, vote_count, has_voted]
+      properties:
+        post_id: { type: string, format: uuid }
+        vote_count: { type: integer, minimum: 0 }
+        has_voted: { type: boolean }
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000 }
+    Comment:
+      type: object
+      required: [id, post_id, body, author, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        post_id: { type: string, format: uuid }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        author: { $ref: '#/components/schemas/UserPublic' }
+        created_at: { type: string, format: date-time }
+    CommentPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+        next_cursor:
+          type: string
+          nullable: true
