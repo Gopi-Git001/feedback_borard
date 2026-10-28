@@ -1,5 +1,5 @@
 # Handoff: TASK-003 Repo layout, .gitignore, .env.example and compose `db` service
-Bot: devops-bot   Attempt: 1   PR: (not yet opened: see Open question 1)   Branch: feature/TASK-003-repo-layout-compose-db
+Bot: devops-bot   Attempt: 1   PR: https://github.com/Gopi-Git001/feedback_borard/pull/9   Branch: feature/TASK-003-repo-layout-compose-db
 
 Task spec and plan row: `docs/project/plan.md` (row TASK-003, and the "TASK-003" acceptance line). Required reviewers: qa-bot and **security-bot (mandatory second reviewer)**.
 
@@ -133,7 +133,7 @@ Not included on purpose: `RATE_LIMIT_LOGIN_PER_ACCOUNT` and `RATE_LIMIT_INVITE_A
 - **Rate-limit, tuning and proxy values are the documented defaults.**
 
 ## Open questions
-1. **PR not opened (blocker for the deliverable).** In this run the GitHub connector offers no tool that writes files or commits (only branch, PR, review and read tools), and the box has no GitHub credentials (`git push` fails: could not read Username). The work is committed locally on the branch as a single commit, `TASK-003: Add repo layout, .gitignore, .env.example and compose db service`, plus this handoff. The Orchestrator or Gopi needs to push it (or give devops-bot a credential or a write-capable tool), then open the PR titled `TASK-003: Repo layout, .gitignore, .env.example and compose db service`, request qa-bot and security-bot, and fill in the PR link in this file's header.
+1. **PR was opened** at https://github.com/Gopi-Git001/feedback_borard/pull/9. In this run the GitHub connector offers no tool that writes files or commits (only branch, PR, review and read tools), and the box has no GitHub credentials (`git push` fails: could not read Username). The work is committed locally on the branch as a single commit, `TASK-003: Add repo layout, .gitignore, .env.example and compose db service`, plus this handoff. The Orchestrator or Gopi needs to push it (or give devops-bot a credential or a write-capable tool), then open the PR titled `TASK-003: Repo layout, .gitignore, .env.example and compose db service`, request qa-bot and security-bot, and fill in the PR link in this file's header.
 2. **Restricted database role.** ADR-004 section 5 says "the compose `db` init creates both roles" (owner and restricted non-owner). TASK-003 acceptance does not include it, so no init script exists. `DATABASE_URL` therefore names a role (`feedback_app`) that does not exist yet. Suggested follow-up (TASK-006 or TASK-007): an init script in `/docker-entrypoint-initdb.d` that creates the role (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`), plus `ALTER DEFAULT PRIVILEGES FOR ROLE <owner>` granting SELECT, INSERT, UPDATE, DELETE and sequence USAGE, and one more password variable. The names `feedback_owner`, `feedback_app` and `feedback_board` are devops-bot's choice.
 3. **Names not in any document:** `POSTGRES_HOST_PORT`, the db and role names above. Confirm or rename.
 4. **URL scheme:** the documents say "PostgreSQL URL" only. I used `postgresql+psycopg://` (SQLAlchemy 2.1 with psycopg 3, both pinned). backend-bot should confirm in TASK-004.
