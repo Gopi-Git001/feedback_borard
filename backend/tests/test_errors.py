@@ -1,6 +1,8 @@
 """Every error uses the contract body. Request validation is 400, not 422."""
 
+import io
 import logging
+import secrets
 
 import pytest
 from fastapi import FastAPI
@@ -8,6 +10,8 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, ConfigDict
 
 from feedback_board.app import create_app
+from feedback_board.logging_config import JsonFormatter
+from feedback_board.role_check import StartupRefused
 
 
 def _error(response_json: object) -> dict[str, object]:
@@ -26,6 +30,28 @@ def test_unknown_path_is_404(client: TestClient) -> None:
     assert error["message"] == "Not found"
     assert error["details"] == []
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_undefined_edit_route_is_not_415(client: TestClient) -> None:
+    response = client.patch(
+        "/api/v1/posts/1",
+        content="not-json",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert response.status_code == 404
+    assert response.status_code != 415
+    error = _error(response.json())
+    assert error["code"] == "NOT_FOUND"
+    assert error["details"] == []
+
+
+def test_interactive_docs_are_disabled(client: TestClient) -> None:
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        response = client.get(path)
+        assert response.status_code == 404
+        error = _error(response.json())
+        assert error["code"] == "NOT_FOUND"
+        assert error["details"] == []
 
 
 def test_wrong_method_is_405(client: TestClient) -> None:
@@ -75,9 +101,17 @@ def test_unhandled_exception_is_500_without_the_message(app: FastAPI) -> None:
     def _boom() -> dict[str, str]:
         raise RuntimeError(secret)
 
+    log_buffer = io.StringIO()
+    handler = logging.StreamHandler(log_buffer)
+    handler.setFormatter(JsonFormatter())
     logger = logging.getLogger("feedback_board")
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/v1/_boom")
+    logger.addHandler(handler)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/_boom")
+    finally:
+        logger.removeHandler(handler)
+    logged = log_buffer.getvalue()
     assert response.status_code == 500
     error = _error(response.json())
     assert error["code"] == "INTERNAL_ERROR"
@@ -85,27 +119,19 @@ def test_unhandled_exception_is_500_without_the_message(app: FastAPI) -> None:
     assert error["details"] == []
     assert secret not in response.text
     assert response.headers["cache-control"] == "no-store"
-    # The handler records the exception type, not the text.
-    assert logger.filters
     assert secret not in response.headers.get("x-request-id", "")
+    assert '"message":"unhandled exception"' in logged
+    assert '"exc_type":"RuntimeError"' in logged
+    assert secret not in logged
 
 
-def test_database_outage_uses_the_error_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    password = "db-password-should-not-leak"
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        f"postgresql+psycopg://feedback_owner:{password}@127.0.0.1:1/feedback_board",
-    )
+def test_unreachable_database_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    password = secrets.token_hex(16)
+    url = f"postgresql+psycopg://feedback_app:{password}@127.0.0.1:1/feedback_board"
+    monkeypatch.setenv("DATABASE_URL", url)
     application = create_app()
-    try:
-        with TestClient(application, raise_server_exceptions=False) as client:
-            response = client.get("/api/v1/health")
-    finally:
-        application.state.engine.dispose()
-    assert response.status_code == 503
-    error = _error(response.json())
-    assert error["code"] == "INTERNAL_ERROR"
-    assert error["message"] == "Database unavailable"
-    assert error["details"] == []
-    assert password not in response.text
-    assert response.headers["cache-control"] == "no-store"
+    with pytest.raises(StartupRefused) as caught:
+        with TestClient(application):
+            pass
+    assert password not in str(caught.value)
+    assert url not in str(caught.value)
