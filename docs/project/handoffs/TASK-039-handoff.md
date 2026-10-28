@@ -1,5 +1,5 @@
 # Handoff: TASK-039 Display name at signup and auth extras in stories
-Bot: ba-bot   Attempt: 1   PR: to be set when opened   Branch: fix/TASK-039-display-name-and-auth-extras
+Bot: ba-bot   Attempt: 1   PR: https://github.com/Gopi-Git001/feedback_borard/pull/4   Branch: fix/TASK-039-display-name-and-auth-extras
 
 Open questions: see the "Open questions" section below (9 items, all ASSUMED or contract mismatches).
 
