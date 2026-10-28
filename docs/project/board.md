@@ -1,14 +1,14 @@
-# Board - updated 2026-10-27 (PR #7, #9 and #10 merged; reviews of those heads still open)
-Current milestone: M0 - Foundation (plan approved by the human 2026-10-27)
+# Board - updated 2026-10-27 (PR #7, #8, #9, #10 and #11 merged; security-bot review of PR #7 still open)
+Current milestone: M0 - Foundation (plan approved by Gopi in chat, relayed by the Orchestrator; reviewers have not verified it, 2026-10-27)
 
 | Task | Title | Owner | State | Attempt | PR | Updated | Note |
 |------|-------|-------|-------|---------|----|---------|------|
-| TASK-001 | Verify and pin stack; data model; OpenAPI contract | architect-bot | DONE | 9 | PR #2 (merged) + PR #7 (merged) | 2026-10-27 | PR #2 merge 54f79e4; PR #7 merged unreviewed-to-completion as 11497e9, post-merge reviews pending. |
+| TASK-001 | Verify and pin stack; data model; OpenAPI contract | architect-bot | DONE | 9 | PR #2 (merged) + PR #7 (merged) | 2026-10-27 | DONE. PR #2 merged (54f79e4) while qa-bot's last verdict on its head was CHANGES_REQUESTED, and there was no security-bot comment on that head. PR #7 merged (11497e9, head 6442f3b): qa-bot post-merge APPROVE of 6442f3b (comment 6459276059) is posted; security-bot post-merge review of 6442f3b is pending. |
 | TASK-002 | User stories with Given/When/Then for F1-F9 | ba-bot | DONE | 2 | PR #1 (merged) + PR #3 (merged) | 2026-10-27 | PR #1 merged early, merge commit 0567ef4; Attempt 2 review fixes merged in PR #3, merge commit b495550. |
-| TASK-003 | Repo layout, .gitignore, .env.example and compose `db` service | devops-bot | IN_REVIEW | 1 | PR #9 (merged) | 2026-10-27 | PR #9 merged at old head 6372059 as ec9df3d; the roles-init follow-up is a new PR from devops-bot. |
-| TASK-004 | Backend skeleton: app factory, health, settings, error format, pytest + test DB | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-001, TASK-003. |
-| TASK-005 | Frontend skeleton: Vite, React, TypeScript, lint, unit tests, router check, typed API types | frontend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-001, TASK-003. |
-| TASK-006 | Alembic 0001_initial from data-model.md, with DDL constraint tests on PostgreSQL | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-004. |
+| TASK-003 | Repo layout, .gitignore, .env.example and compose `db` service | devops-bot | IN_REVIEW | 1 | PR #9 (merged) + PR #12 | 2026-10-27 | PR #9 merged at ec9df3d at old head 6372059. Criterion 6 is delivered by PR #12 and is in review. |
+| TASK-004 | Backend skeleton: app factory, health, settings, error format, pytest + test DB | backend-bot | IN_PROGRESS | 1 | - | 2026-10-27 | Started from main 11497e9 in parallel with the doc follow-ups. Docs-only follow-up PRs do not block this task. Reviewers: qa-bot. Blocked by: TASK-001 (DONE). |
+| TASK-005 | Frontend skeleton: Vite, React, TypeScript, lint, unit tests, router check, typed API types | frontend-bot | IN_PROGRESS | 1 | - | 2026-10-27 | Started from main 11497e9 in parallel with the doc follow-ups. Docs-only follow-up PRs do not block this task. Reviewers: qa-bot. Blocked by: TASK-001 (DONE). |
+| TASK-006 | Alembic 0001_initial from data-model.md, with DDL constraint tests on PostgreSQL | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-004, and TASK-003 DB roles (PR #12). |
 | TASK-007 | Dockerfiles and compose wiring: db, backend, frontend | devops-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-004, TASK-005, TASK-006. |
 | TASK-008 | GitHub Actions CI: backend and frontend jobs | devops-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-004, TASK-005. |
 | TASK-009 | Backend auth: signup and login with Argon2id and JWT | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-006. |
@@ -16,7 +16,7 @@ Current milestone: M0 - Foundation (plan approved by the human 2026-10-27)
 | TASK-011 | Tenancy model: tenant context, org-scoped data access, role guards, two-org test fixtures | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-010. |
 | TASK-012 | Base UI shell: routing, layout, auth session provider, route guards, API client | frontend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-005. |
 | TASK-013 | Playwright harness and smoke test | frontend-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-005, TASK-007. |
-| TASK-014 | CI job: compose up and Playwright e2e | devops-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-007, TASK-008, TASK-013. |
+| TASK-014 | CI job: compose up and Playwright e2e | devops-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-007, TASK-008, TASK-010, TASK-013. |
 | TASK-015 | Release notes M0 | docs-bot | TODO | 0 | - | 2026-10-27 | Planned, M0; approved; dispatch when blockers are DONE. Reviewers: qa-bot. Blocked by: TASK-011, TASK-012, TASK-014. |
 | TASK-016 | Backend organizations: create and get current | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M1; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-011. |
 | TASK-017 | Backend invites: get-or-create token, public preview, accept | backend-bot | TODO | 0 | - | 2026-10-27 | Planned, M1; approved; dispatch when blockers are DONE. Reviewers: qa-bot, security-bot. Blocked by: TASK-016. |
@@ -44,15 +44,18 @@ Current milestone: M0 - Foundation (plan approved by the human 2026-10-27)
 | TASK-039 | Display name at signup and approved auth extras in the stories | ba-bot | DONE | 2 | PR #4 (merged) | 2026-10-27 | PR #4 merged, merge commit 2240765. |
 | TASK-040 | Align stories with the revised auth and invite design | ba-bot | IN_REVIEW | 5 | PR #5 (merged) + PR #6 (merged) + PR #10 (merged) | 2026-10-27 | PR #10 merged as cb8054a at head 1835f165 with qa-bot CHANGES_REQUESTED outstanding on text fixes; ba-bot's follow-up PR pending. |
 
-Counts: M0 = 17 tasks (3 DONE, 2 in review, 12 TODO), including follow-ups TASK-039 and TASK-040. M1 = 23 tasks (all TODO). Total 40. TASK-002 and TASK-039 stay DONE: each has a merged PR and a qa-bot APPROVE. TASK-001 stays DONE with post-merge review of PR #7 still pending. TASK-003 and TASK-040 stay IN_REVIEW. Other tasks stay TODO until their blockers are DONE.
+Counts: M0 = 17 tasks (3 DONE, 2 in review, 2 in progress, 10 TODO), including follow-ups TASK-039 and TASK-040. M1 = 23 tasks (all TODO). Total 40. TASK-002 and TASK-039 stay DONE: each has a merged PR and a qa-bot APPROVE. TASK-001 stays DONE: PR #2 merged while qa-bot's last verdict on its head was CHANGES_REQUESTED and there was no security-bot comment on that head; qa-bot post-merge APPROVE of PR #7 head 6442f3b (comment 6459276059) is posted, and security-bot post-merge review of 6442f3b is pending. TASK-003 and TASK-040 stay IN_REVIEW. TASK-004 and TASK-005 are IN_PROGRESS. Other tasks stay TODO until their blockers are DONE.
 
 ## Needs human
-- None right now. Approved 2026-10-27: brief, stack, plan; TypeScript 6.0.3; extra /auth/refresh and /auth/logout; display name at signup; rate limiting kept; standing OK for the Orchestrator to merge PRs that pass qa-bot review (and security-bot where required).
+- None right now. Approved by Gopi in chat, relayed by the Orchestrator; reviewers have not verified it. 2026-10-27: brief, stack, plan; TypeScript 6.0.3; extra /auth/refresh and /auth/logout; display name at signup; rate limiting kept; standing OK for the Orchestrator to merge PRs that pass qa-bot review (and security-bot where required).
 ## Blocked
-- None. Open follow-ups, not blockers: post-merge review of TASK-001 PR #7 (11497e9); TASK-003 roles-init follow-up PR from devops-bot; TASK-040 text fixes (qa-bot CHANGES_REQUESTED on PR #10) and ba-bot's follow-up PR.
+- None. Open follow-ups, not blockers: security-bot post-merge review of TASK-001 PR #7 head 6442f3b (qa-bot APPROVE, comment 6459276059, is posted); TASK-003 criterion 6 is delivered by PR #12 and is in review; TASK-040 PR #10 merged at cb8054a at head 1835f165 with qa-bot CHANGES_REQUESTED outstanding and a ba-bot follow-up PR pending. Docs-only follow-up PRs do not block build tasks.
 ## Recently done
 - TASK-001, TASK-002 and TASK-039.
 ## Log
 - 2026-10-27: TASK-001 set DONE (PR #2 merged, merge commit 54f79e4; Attempt 7 follow-up open). TASK-002 set DONE from its merged PRs (PR #1 merge commit 0567ef4; PR #3 merge commit b495550). TASK-039 set DONE (PR #4 merged, merge commit 2240765). TASK-040 set IN_REVIEW (PR #5 merged, merge commit 057fb19; PR #6 merged, merge commit 4a2e084, qa-bot post-merge APPROVE and security-bot PASS with Lows, no pre-merge review; a further docs follow-up PR from ba-bot is pending).
 - 2026-10-27: TASK-003 dispatched IN_PROGRESS (Attempt 1, devops-bot).
-- 2026-10-27: 9:42 to 9:43 PM CDT, the shared account (Gopi Thungam) merged PR #10 (cb8054a), PR #9 (ec9df3d), PR #8 (b6e9582) and PR #7 (11497e9) before reviews of those heads were complete.
+- 2026-10-27: PR #2 merged, merge commit 54f79e4. Merged by the shared Gopi-Git001 account; who pressed merge is unknown.
+- 2026-10-27: PR #6 merged, merge commit 4a2e084. Merged by the shared Gopi-Git001 account; who pressed merge is unknown.
+- 2026-10-27: 9:42 to 9:43 PM CDT, PR #10 (cb8054a), PR #9 (ec9df3d), PR #8 (b6e9582) and PR #7 (11497e9) were merged by the shared Gopi-Git001 account; who pressed merge is unknown. Reviews of those heads were not complete.
+- 2026-10-27: 9:48:43 PM CDT, PR #11 merged (92dedd6, at head 75b261f, before any QA or security-bot comment). Merged by the shared Gopi-Git001 account; who pressed merge is unknown.
