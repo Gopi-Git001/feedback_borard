@@ -108,7 +108,7 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 | `TRUSTED_PROXY_IPS` | comma-separated exact IP addresses (no `*`, no `0.0.0.0/0`, no `::/0`) | compose sets the fixed nginx address, for example `172.28.0.10` | backend | yes, non-empty | peers whose `X-Forwarded-For` is believed (ADR-002) |
 | `ARGON2_MAX_CONCURRENCY` | integer 1-64 | `4` | backend | no | concurrent Argon2 hashes per worker, at most 256 MiB at 4 (ADR-002) |
 | `REFRESH_REUSE_LEEWAY_SECONDS` | integer 0-60 | `10` | backend | no | a reused refresh token inside this window after rotation gets 401 without revoking the family (ADR-002) |
-| `RATE_LIMIT_ENABLED` | boolean | `true` | backend | must be `true` | switches all limits off for tests only (ADR-002) |
+| `RATE_LIMIT_ENABLED` | boolean | `true` | backend | must be `true` | switches all limits off for tests only (ADR-002); **e2e, load and CI test runs must set it to `false`** (non-production only, ADR-004) |
 | `RATE_LIMIT_SIGNUP_PER_IP` | `<max>/<window_seconds>` | `10/60` | backend | no | signup, per client IP (stories F1-2) |
 | `RATE_LIMIT_LOGIN_PER_IP` | same | `10/60` | backend | no | login, per client IP (F1-2) |
 | `RATE_LIMIT_REFRESH_PER_IP` | same | `10/60` | backend | no | refresh, per client IP (F1-2) |
@@ -116,7 +116,7 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 | `RATE_LIMIT_INVITE_ACCEPT_PER_IP` | same | `10/60` | backend | no | invite accept, per client IP (brief; not in a story) |
 | `RATE_LIMIT_ORG_CREATE_PER_USER` | same | `10/60` | backend | no | organization create, per user id (architect addition) |
 
-Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
+Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit or lockout: out of scope, not offered, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
 
 ## Change log
 - 2026-10-27: initial pinned set (TASK-001, architect-bot).

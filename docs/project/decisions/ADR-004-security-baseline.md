@@ -44,12 +44,25 @@ The review found that browser hardening, CSRF handling, cache and log rules and 
 ### 6. Accounts and passwords (what is and is not done)
 - Minimum 8 characters stays (story F1-1); maximum 128; Argon2id (ADR-002). **Not met, follow-ups:** the minimum is below NIST SP 800-63B-4 (15 for single-factor use; OWASP ASVS 5.0.0 6.2.1 requires 8 and recommends 15, so 8 meets the ASVS minimum), there is no password blocklist (ASVS 6.2.4, top 3000, level 1) and no check against breached-password lists (ASVS 6.2.12, level 2), and there is no password change, reset or email verification flow (no emails in the MVP). When a change or reset flow is added it must revoke all refresh-token families of the user.
 - `409 EMAIL_TAKEN` on signup is required by story F1-1 and is an enumeration oracle; mitigated by the per-IP signup limit only (ADR-002). A generic response would contradict the story and is not done.
-- Rate limits, counter store, proxy trust and the env vars that tune them: ADR-002 (10 requests per 60 s per IP per endpoint by default, rolling window). Every environment variable with default and owner is in the table in `stack.md`.
+- Rate limits, counter store, proxy trust and the env vars that tune them: ADR-002 (10 requests per 60 s per IP per endpoint by default, rolling window). Every environment variable with default and owner is in the table in `stack.md`. **End-to-end, load and CI test runs (TASK-010, TASK-013) must set `RATE_LIMIT_ENABLED=false` or raise the limits through the `RATE_LIMIT_*` variables**, because the SPA calls refresh on every page load and one client IP would otherwise hit 429 after 10 calls in 60 s; this is allowed only with `APP_ENV` `development` or `test` and never in production.
 
 ### 7. Known limits (accepted risks, not fixed in the MVP)
 - **No rate limit on authenticated writes** (posts, comments, votes, status changes, deletes): the approved scope (brief, F1-2) limits only signup, login, refresh, invite preview/accept (plus the architect-added organization create). A signed-in member can therefore create posts and comments as fast as the server allows; the damage stays inside the member's own organization. Follow-up: nginx `limit_req` or a per-user write limit using the same `rate_limit_hits` table.
 - **Request body size:** nginx sets `client_max_body_size 64k` (ASSUMED; the largest legitimate body is a 2000-character description, at most about 8 KB in UTF-8 plus JSON) so the backend never buffers large bodies. Over-size requests get nginx's 413, which is not a JSON error body and not in the contract; the SPA treats any non-2xx as an error. Pydantic field limits (contract) apply inside that size.
 - Access tokens stay valid until they expire after logout, reuse detection or eviction (at most 15 minutes, plus 30 s leeway), ADR-002.
+
+### Accepted-risk register (needs human acceptance)
+Approver: **Gopi Thungam (pending, asked 2026-10-27)**. Status of every row is **pending**; nothing here is approved until the Orchestrator reports that he confirmed it.
+
+| # | Accepted risk | Why accepted for the MVP | Status |
+|---|---|---|---|
+| R1 | **No per-account lockout.** Per-account lockout is out of scope (story F1-2) and not offered; only the per-IP limit exists | Story scope; avoids a lockout denial-of-service on a victim's account | pending |
+| R2 | **Access token stays valid up to 15 min (plus 30 s leeway, so up to 15 min 30 s) after logout, reuse detection or eviction** (ADR-002) | Stateless access token; no per-request revocation lookup | pending |
+| R3 | **Per-IP limit versus NAT users:** many users behind one shared IP share the 10 per 60 s budget and can lock each other out of signup, login and refresh; one attacker with many IPs is not stopped | Approved per-IP design (brief, F1-2); the limits are configurable (`RATE_LIMIT_*`) | pending |
+| R4 | **Signup `409 EMAIL_TAKEN` is an account-enumeration oracle**; mitigated by the per-IP signup limit only | Required by story F1-1 | pending |
+| R5 | **No rate limit on authenticated writes** (posts, comments, votes, status changes, deletes) | Not in the approved scope; damage stays inside the member's own organization | pending |
+| R6 | **Invite link has no expiry, no revoke and no regenerate, and there is no remove-member** | Out of the approved MVP scope (not in the brief's list); a key rotation (ADR-003) is the only way to invalidate links | pending |
+| R7 | **The DDL and the contract were not run against PostgreSQL** (design only); SQL in data-model.md and ADR-002 is untested | No application or database exists in TASK-001; backend tests must prove it | pending |
 
 ## Consequences
 - Easier: one checklist for backend-bot, frontend-bot, devops-bot and qa-bot; each rule is testable (header assertions, CSP-violation check in Playwright, log-content tests, startup refusal tests).
