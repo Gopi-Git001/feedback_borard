@@ -2,7 +2,7 @@
 
 Status: Proposed (awaiting Orchestrator approval) | Owner: architect-bot | Task: TASK-001 | Date: 2026-10-27
 Database: PostgreSQL 18 (docs/project/stack.md). Migrations: Alembic. ORM: SQLAlchemy 2.1.
-Sources: brief.md features F1-F9 and ASSUMED list. Stories do not exist yet (ba-bot), so entities come from the brief.
+Sources: brief.md features F1-F9 and ASSUMED list. Stories F1-F9 and E2E-1 exist on main (TASK-002, PR #3 version, commit `b495550`); where a story states a limit or rule, this model follows the story, and where it only says ASSUMED the number is repeated here as ASSUMED.
 
 ## 1. Tenancy strategy
 - **Model: shared tables with `organization_id` (row-level tenancy).** One database, one schema. Chosen because the product is free, small, single-region, and needs `docker compose up` simplicity; schema-per-tenant or DB-per-tenant would add migration and ops cost with no benefit at this scale.
@@ -29,7 +29,7 @@ Sources: brief.md features F1-F9 and ASSUMED list. Stories do not exist yet (ba-
 | Column | Type | Null | Default | Constraints / validation | Notes |
 |---|---|---|---|---|---|
 | id | uuid | no | uuidv7() | PK | |
-| email | text | no | | `UNIQUE (lower(email))`; length 3-254; valid email format | **PII** |
+| email | text | no | | unique via `CREATE UNIQUE INDEX users_email_lower_key ON users (lower(email))` (an expression cannot be a table-level UNIQUE constraint in PostgreSQL); length 3-254; valid email format | **PII** |
 | password_hash | text | no | | Argon2id encoded string (ADR-002) | **Secret**, never returned or logged |
 | display_name | varchar(80) | no | | length 1-80 after trim | **PII** |
 | created_at | timestamptz | no | now() | | |
@@ -91,7 +91,12 @@ Also: `UNIQUE (organization_id, id)` (target of composite foreign keys).
 | user_id | uuid | no | | FK users(id) ON DELETE CASCADE | |
 | created_at | timestamptz | no | now() | | |
 | updated_at | timestamptz | no | now() | | rows are immutable; column kept for the standard-columns rule |
-Constraint: **`UNIQUE (user_id, post_id)`** (acceptance criterion). Add-vote is `INSERT ... ON CONFLICT (user_id, post_id) DO NOTHING`; `vote_count` is incremented only if a row was inserted. Remove-vote deletes the row and decrements only if a row was deleted.
+Constraint: **`UNIQUE (user_id, post_id)`** (acceptance criterion).
+**Vote toggle** (single endpoint `POST /posts/{post_id}/vote`, story F5-1), one transaction, all statements filtered by the caller's `organization_id`:
+1. `DELETE FROM votes WHERE user_id = :u AND post_id = :p AND organization_id = :org RETURNING id`. If a row came back: `UPDATE posts SET vote_count = vote_count - 1 WHERE id = :p AND organization_id = :org`; result `has_voted = false`.
+2. Otherwise `INSERT INTO votes (organization_id, post_id, user_id) VALUES (...) ON CONFLICT (user_id, post_id) DO NOTHING RETURNING id`. If a row came back: `UPDATE posts SET vote_count = vote_count + 1 ...`; result `has_voted = true`.
+3. If the insert returned nothing, a concurrent request of the same user inserted first: do not change anything and return the current state (re-read `vote_count` and `has_voted`). The user can never end up with two votes, and no request fails with 500.
+`vote_count` is changed only by the `UPDATE ... SET vote_count = vote_count +/- 1` statements above (atomic in SQL, never read-modify-write in Python); `CHECK (vote_count >= 0)` on `posts`. The post must exist in the caller's organization first (`SELECT ... WHERE id = :p AND organization_id = :org`), otherwise 404 and nothing is written.
 
 ### 3.7 comments
 | Column | Type | Null | Default | Constraints / validation | Notes |
@@ -146,7 +151,7 @@ erDiagram
         uuid organization_id FK
         uuid author_id FK
         varchar title
-        text description
+        varchar description "1-2000"
         text type "idea|bug"
         text status "New|Planned|In Progress|Done"
         int vote_count
@@ -172,7 +177,7 @@ Every foreign key and every query in brief F1-F9 is covered. PostgreSQL does not
 
 | Table | Index | Serves |
 |---|---|---|
-| users | UNIQUE (lower(email)) | login lookup, signup uniqueness (F1) |
+| users | UNIQUE INDEX (lower(email)) | login lookup, signup uniqueness (F1) |
 | organizations | PK (id); (created_by) | FK |
 | memberships | UNIQUE (user_id); UNIQUE (organization_id, user_id); (organization_id) | resolve user's org and role on each request; FK |
 | invites | UNIQUE (token); UNIQUE (organization_id); (created_by) | preview/accept by token (F2, F3); FK |
@@ -188,7 +193,7 @@ Filter combining both type and status uses the status index and filters type in 
 | users.password_hash | secret | Argon2id (ADR-002); never selected into API models; never logged |
 | users.email | PII | unique, lower-cased; returned only to the owner (`/auth/me`) and, in invite/comment/post author objects, **not** returned (only `id` + `display_name`); not logged in clear in error logs |
 | users.display_name | PII (low) | shown to members of the same organization only |
-| invites.token | secret (bearer link) | stored in clear because F3-1 requires showing the same link again; returned only to admins of that org (`POST /organizations/current/invite`) and used as the lookup key by the public preview/accept; never logged; 256-bit random so lookup timing is not a practical oracle; encrypting at rest is a possible follow-up |
+| invites.token | secret (bearer link) | stored in clear because F3-1 requires showing the same link again; returned only to admins of that org (`POST /organizations/current/invite`) and used as the lookup key by the public preview/accept (`GET /invites/{token}`, `POST /invites/{token}/accept`); it travels in the URL path, so it is **redacted from access logs, reverse-proxy logs and error tracking and served with `Cache-Control: no-store` (ADR-003)**; never written to application logs by value; 256-bit random so lookup timing is not a practical oracle; encrypting at rest is a possible follow-up |
 | JWT secret | secret | env var `JWT_SECRET`, never in the database or repo |
 | Payment data | n/a | none: free product, no billing |
 Backups and logs must not contain raw tokens or passwords. Structured logs record admin actions (status change, delete: actor id, organization id, post id, timestamp) for auditability; a persistent audit table is a follow-up (section 8).
@@ -202,10 +207,12 @@ Backups and logs must not contain raw tokens or passwords. Structured logs recor
 ## 8. Open questions / follow-ups
 - Audit log table (who changed status or deleted what) is not in the brief; recommended as a later task.
 - PostgreSQL RLS as defence in depth (section 1, point 5).
+- Possible hardening (not required by any story, deferred): composite FKs `(organization_id, author_id)` / `(organization_id, user_id)` -> `memberships(organization_id, user_id)` (that UNIQUE already exists) on posts, comments and votes would make the database also enforce that authors and voters belong to the organization. Deferred because memberships are never deleted in the MVP and the application layer already checks it; revisit with multi-org support (qa-bot suggestion, attempt 1 review).
 - Invite model follows story F3-1 (one persistent token per organization, shown again on every click); this replaces my first design (many hashed tokens, shown once).
 - Description is required (1-2000 characters) per story F4-1; limits for name/title/description/comment follow the stories, which are ASSUMED numbers there.
 
 ## Change log
 - 2026-10-27: initial model for TASK-001 (architect-bot).
+- 2026-10-27: attempt 2: header text and ER diagram corrected (stories exist, description varchar), email uniqueness as a unique index, vote toggle algorithm documented, invite-token log redaction (ADR-003).
 - 2026-10-27: field limits aligned to TASK-002 stories (org name 60, title 120, description required 2000, comment 1000).
 - 2026-10-27: invites changed to one persistent plain token per organization after TASK-002 story F3-1 landed (token_hash and revoked_at removed, UNIQUE (organization_id) added).
