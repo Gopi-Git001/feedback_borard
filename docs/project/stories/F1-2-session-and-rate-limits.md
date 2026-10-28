@@ -3,7 +3,7 @@ Status: READY
 Security review: touches authentication (security-bot review required)
 As a user, I want my login to be renewed automatically for up to 7 days and to be able to log out so that the session really ends, and I want repeated automated sign-up, login and renewal attempts to be limited, so that my account stays usable and safer.
 
-Traces to brief feature F1 and to the human-approved additions in brief.md ("POST /auth/refresh and POST /auth/logout ... refresh tokens are stored server-side with rotation and a 7-day absolute cap, and logout revokes them"; "Rate limiting (HTTP 429) on signup, login, refresh and invite preview/accept"). Reuse detection of rotated tokens, the CSRF guard (X-Requested-With and Origin) and the per-account login limit are in F1-3.
+Traces to brief feature F1 and to the human-approved additions in brief.md ("POST /auth/refresh and POST /auth/logout ... refresh tokens are stored server-side with rotation and a 7-day absolute cap, and logout revokes them"; "Rate limiting (HTTP 429) on signup, login, refresh and invite preview/accept"). Reuse detection of rotated tokens, the CSRF guard (X-Requested-With and Origin) and the bearer-token rule are in F1-3.
 
 ## Acceptance criteria
 1. Given I am logged in and my browser holds a valid refresh cookie, When the app asks for a new access token (for example on page reload, or after my 15-minute access token expired; the request carries the guard header described in F1-3), Then the response is 200, a new access token valid for 900 seconds is issued for the same user, the refresh token is rotated (the cookie is replaced by a new value), the new cookie's Max-Age is the number of seconds left until my login time plus 7 days (never more than 604800), and I stay logged in without typing my password.
@@ -18,7 +18,7 @@ Traces to brief feature F1 and to the human-approved additions in brief.md ("POS
 - Each login or sign-up starts a new token family with an absolute 7-day cap counted from login. Rotation (each refresh replaces the refresh token with a successor in the same family) never extends the session beyond login time plus 7 days. After 7 days I must log in again (contract, ADR-002).
 - Logout revokes the whole family on the server, clears the cookie, and is idempotent (always 204). It is not rate limited (contract, ADR-002).
 - Known limit, not a criterion (ADR-002): an access token issued before logout or revocation stays valid until it expires (at most 15 minutes).
-- Rate limit (HTTP 429) applies to sign-up, login and refresh, per IP address (contract; the login limit also has a per-account part, see F1-3). Contract-sourced: code RATE_LIMITED, message "Too many requests. Try again later.", Retry-After header in seconds. ASSUMED (brief.md): 10 requests per rolling 60 seconds per IP address, counted separately for each endpoint, configurable by environment variable; requests count whether or not they succeed.
+- Rate limit (HTTP 429) applies to sign-up, login and refresh, per IP address (contract). Contract-sourced: code RATE_LIMITED, message "Too many requests. Try again later.", Retry-After header in seconds. ASSUMED (brief.md): 10 requests per rolling 60 seconds per IP address, counted separately for each endpoint, configurable by environment variable; requests count whether or not they succeed.
 - The same 429 rule for invite preview and accept is in F3-1 and F3-2.
 
 ## UI notes
@@ -31,7 +31,7 @@ Traces to brief feature F1 and to the human-approved additions in brief.md ("POS
 - User (read): id, email, display name.
 
 ## Out of scope
-Rotated-token reuse detection, the CSRF guard header and Origin check, and the per-account login limit (all F1-3), "log out of all devices", the cap on active families per user (ADR-002, ASSUMED there), revoking access tokens, password reset, rate limits on other endpoints, CAPTCHA.
+Rotated-token reuse detection, the CSRF guard header and Origin check, and the bearer-token rule (all F1-3), account lockout and any per-account login limit (out of scope, Orchestrator decision), "log out of all devices", the cap on active families per user (ADR-002, ASSUMED there), revoking access tokens, password reset, rate limits on other endpoints, CAPTCHA.
 
 ## Assumptions / Questions
 - ASSUMED: rate-limit threshold 10 requests per rolling 60 seconds per IP address per endpoint, as in brief.md. ADR-002 lists different default numbers (sign-up 5 per 3600 s, login 20 per 900 s, refresh 60 per 900 s, also ASSUMED there) that are configurable by environment variables; the stories follow the approved brief. See the TASK-040 handoff, Open questions.

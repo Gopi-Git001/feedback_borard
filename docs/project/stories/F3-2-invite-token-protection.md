@@ -11,7 +11,7 @@ Traces to brief feature F3 and to the approved addition "The invite token never 
 3. Given I open "<site address>/join#<token>" in the browser, When the page has read the token, Then the address bar shows "/join" without the "#<token>" part (the fragment is removed from the address bar and browser history entry).
 4. Given I am not logged in and I open a valid "/join#<token>" link for "Acme", When the page loads, Then I see the organization name "Acme" (from preview) and a prompt to sign up or log in, the token is held in sessionStorage under the key "pending_invite" while I sign up (email, password, display name) or log in, and after I am logged in the invite is applied automatically, I am a member (not admin) of "Acme", and the "pending_invite" key is deleted; the key is also deleted when accepting fails and when I log out.
 5. Given a token that is edited, truncated, too long, too short, contains characters that are not allowed, or does not exist, When it is sent to preview or to accept, Then the response is 404 with code "INVITE_NOT_FOUND" and the message "Invite link is invalid" in every case, never 400, and the response body is identical for all of these cases and does not echo the submitted value.
-6. Given a logged-in user without an organization has sent 10 accept requests with invalid tokens in the last 60 seconds from one IP address (ASSUMED threshold), When the same user sends an 11th accept request, Then the response is 429 with code "RATE_LIMITED" and a Retry-After header, and no membership is created even if the token is valid.
+6. Given one IP address has already made 10 invite-accept requests with invalid tokens in the last 60 seconds (ASSUMED threshold), When a logged-in user without an organization sends an 11th accept request from that IP, Then the response is 429 with code "RATE_LIMITED" and a Retry-After header, and no membership is created even if the token is valid.
 
 ## Business rules
 - The token is a bearer secret: whoever holds it can join the organization as a member (ADR-003). It never appears in a path or query string, and request bodies of /invites/* and /auth/* are never logged (contract, ADR-003, ADR-004).
@@ -19,7 +19,7 @@ Traces to brief feature F3 and to the approved addition "The invite token never 
 - Malformed, wrong-length and unknown tokens are indistinguishable (always 404, never 400) (contract, ADR-003).
 - A logged-out visitor's token is kept in sessionStorage (key "pending_invite") only while signing up or logging in; it is the one deliberate use of Web Storage (ADR-003). The access token is never put in Web Storage (ADR-002).
 - Accept needs a login (401 without one, see F2-1 criterion 6); preview is public.
-- Accept is rate limited (HTTP 429, contract: per user; brief.md: invite preview/accept, ASSUMED 10 per 60 seconds). The test uses one user from one IP address so both readings give the same result.
+- Accept is rate limited per IP address (HTTP 429; brief.md: invite preview/accept, ASSUMED 10 per 60 seconds per IP per endpoint; decided by the Orchestrator, TASK-040 Attempt 2). The contract wording ("per user") is being aligned by architect-bot.
 
 ## UI notes
 - The "/join" page shows the organization name from the preview and "Join" (ASSUMED label) after login, or the sign-up and login choice when logged out (ASSUMED layout).
@@ -34,7 +34,7 @@ Traces to brief feature F3 and to the approved addition "The invite token never 
 Showing the link to admins (F3-1), joining rules such as already belonging to an organization (F2-1), expiry, revoking and regenerating links, removing members, the Referrer-Policy and CSP headers (ADR-003, ADR-004, security tests).
 
 ## Assumptions / Questions
-- ASSUMED: the rate-limit threshold in criterion 6 (10 per 60 seconds), the "Join" label, the page layout, and that the 429 on accept is counted per user (contract) rather than per IP (brief).
+- ASSUMED: the rate-limit threshold in criterion 6 (10 per 60 seconds), the "Join" label, the page layout, and that requests count whether or not the token is valid. The 429 on accept is counted per IP address (Orchestrator decision; the contract wording still says per user until architect-bot aligns it).
 - ASSUMED: criterion 3 is browser behaviour checked in an e2e or component test (ADR-003 SPA requirement: replaceState); the fragment is removed "immediately" (no time limit in ADR-003).
 - ASSUMED: the Retry-After value in criterion 6 is greater than 0 (the contract gives only "integer seconds").
 - Criterion 2 needs a test setup that can read the application and proxy logs (ADR-003 "Tests (qa-bot)"); how is up to qa-bot and backend-bot.

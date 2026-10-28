@@ -17,7 +17,7 @@ As a user, I want to sign up and log in with my email and password, so that I ca
 - Other members of my organization see only my display name, never my email (API contract, UserPublic).
 - Password minimum length is 8 characters (ASSUMED). Passwords are stored hashed, never returned in any response, never logged (brief, non-functional requirements).
 - Authentication is by JWT (brief).
-- Session renewal, log out and the rate limit (HTTP 429) on sign-up and login are specified in F1-2; refresh-token reuse, the request guard and the per-account login limit are in F1-3.
+- Session renewal, log out and the rate limit (HTTP 429) on sign-up and login are specified in F1-2; refresh-token reuse, the request guard and the bearer-token rule are in F1-3.
 
 ## UI notes
 - Sign-up form: email, password, display name, submit. Login form: email, password, submit. Links to switch between the two.
