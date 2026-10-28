@@ -8,8 +8,8 @@ The brief pre-approves the stack: FastAPI, PostgreSQL, SQLAlchemy + Alembic, Rea
 ## Options considered
 Alternatives to the stack were out of scope. The only real choices were *which stable line* of a few components:
 1. **Python 3.14 vs 3.15.** Both stable. 3.15 is 18 days old; 3.14 has ten patch releases. Chose 3.14.
-2. **Node 24 LTS vs Node 26.** 26 is "Current" until it becomes LTS on 2026-10-28; production should use LTS. Chose 24.
-3. **TypeScript 7.0.2 vs 6.0.3.** 7.0.2 is the latest stable, but typescript-eslint 8.72.1 only supports `<6.1.0`. Chose 6.0.3 so lint works.
+2. **Node 24 LTS vs Node 26.** 26 is "Current" until it becomes LTS on 2026-10-28; production should use LTS. Chose 24 (LTS since 2025-10-28; now Maintenance LTS per endoflife.date, supported to 2028-04-30). A Node 26 review is due in a later task.
+3. **TypeScript 7.0.2 vs 6.0.3.** 7.0.2 is the latest stable, but typescript-eslint 8.72.1 only supports `<6.1.0`. Chose 6.0.3 so lint works. **Confirmed** (Orchestrator message 2026-10-27, relayed from the human).
 4. **SQLAlchemy 2.1 vs 2.0.** 2.1.6 is current stable (GA 2026-09-24); 2.0.55 is the previous line. Chose 2.1.6 (current stable), 2.0.55 as fallback.
 5. **Router package.** `react-router` 8.5.1 (single package) vs `react-router-dom` 7.18.5 (7.x line). Chose `react-router` 8.5.1.
 
