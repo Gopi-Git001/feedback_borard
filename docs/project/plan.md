@@ -1,0 +1,220 @@
+# Plan
+Status: APPROVED by the human on 2026-10-27 (brief, stack, plan; decisions recorded below)
+Drafted: 2026-10-27 by Orchestrator, method: orchestrator-project-planning. Scope of this run: M0 + M1 only (fast-track).
+Inputs: brief.md (approved 2026-10-27), stack.md (Proposed, PR #2), ADR-001/002 (Proposed, PR #2), data-model.md and api-contract.yaml (Proposed, PR #2), stories F1-1..F9-1 + E2E-1 (on main via PR #1, fixes in follow-up PR #3).
+
+## How this plan works
+- 36 new tasks (TASK-003 to TASK-038): M0 has 13, M1 has 23. TASK-001 (architect-bot) and TASK-002 (ba-bot) already exist and are in review.
+- One task = one bot, one branch `feature/TASK-###-slug`, one PR titled `TASK-###: title`, one handoff report. Sizes are S or M only; no task has more than about 6 acceptance criteria or 10 files.
+- Contract-first: no build task starts before TASK-001 (stack.md, data-model.md, api-contract.yaml) has passed review and is on main. After that, backend-bot and frontend-bot work in parallel lanes from the same contract.
+- Every task is reviewed by qa-bot. security-bot is a required second reviewer for auth, tenancy, invite and secrets tasks (TASK-003, 007, 009, 010, 011, 012, 016, 017, 024, 026) and also owns the milestone security review (TASK-035). qa-bot owns no implementation task, so it never reviews its own work; the only qa-bot-owned task is the acceptance run (TASK-037), which the Orchestrator accepts.
+- Playwright harness and journey tests are owned by frontend-bot (qa-bot independently reviews them against the stories), so QA stays independent.
+- Dispatch rule: nothing is dispatched until the human approves this plan. A task is READY when all of its blockers are DONE (merged after qa-bot, and security-bot where required, passed).
+- Review findings that need code changes become fix tasks (TASK-039 onward, branch `fix/TASK-###-slug`), added to this plan when they appear. Two failed reviews on one task means ESCALATED.
+
+## Milestones
+| ID | Name | Goal (demoable outcome) | Status |
+|----|------|-------------------------|--------|
+| M0 | Foundation | `docker compose up` starts db, backend and frontend from a clean clone; /api/v1/health is OK; the browser shows the app shell; migration `0001_initial` is proven on PostgreSQL by tests; signup/login works through the API; the tenancy model and cross-org test harness exist; CI runs backend tests, frontend checks and Playwright smoke on every PR | Planning (TASK-001, 002 in review) |
+| M1 | MVP core (F1-F9) | A user signs up, creates an organization, invites a second user, who posts; both vote; a comment is added; the admin changes status and deletes a post; all of it works with `docker compose up`, E2E journey and all CI checks pass, security review done, README explains running | Not started |
+
+M2 (SaaS essentials) and M3 (launch readiness) from the planning template are out of scope: free product, no billing, no emails, no cloud deploy (brief, Out of scope).
+
+## Tasks: M0 Foundation (13 new tasks)
+| Task | Title | Owner bot | Blocked by | Story/Feature | Size | Reviewers |
+|------|-------|-----------|------------|---------------|------|-----------|
+| TASK-003 | Repo layout, .gitignore, .env.example and compose `db` service | devops-bot | TASK-001 | NFR: docker compose | S | qa-bot, security-bot |
+| TASK-004 | Backend skeleton: app factory, health, settings, error format, pytest + test DB | backend-bot | TASK-001, TASK-003 | NFR; contract conventions | M | qa-bot |
+| TASK-005 | Frontend skeleton: Vite, React, TypeScript, lint, unit tests, router check, typed API types | frontend-bot | TASK-001, TASK-003 | NFR; contract conventions | M | qa-bot |
+| TASK-006 | Alembic 0001_initial from data-model.md, with DDL constraint tests on PostgreSQL | backend-bot | TASK-004 | F3, F5, F9 (data rules) | M | qa-bot |
+| TASK-007 | Dockerfiles and compose wiring: db, backend, frontend | devops-bot | TASK-004, TASK-005, TASK-006 | NFR: docker compose up | M | qa-bot, security-bot |
+| TASK-008 | GitHub Actions CI: backend and frontend jobs | devops-bot | TASK-004, TASK-005 | NFR: CI | M | qa-bot |
+| TASK-009 | Backend auth: signup and login with Argon2id and JWT | backend-bot | TASK-006 | F1 | M | qa-bot, security-bot |
+| TASK-010 | Backend auth session: refresh, logout, me, current-user guard, rate limits | backend-bot | TASK-009 | F1 | M | qa-bot, security-bot |
+| TASK-011 | Tenancy model: tenant context, org-scoped data access, role guards, two-org test fixtures | backend-bot | TASK-010 | All data features (isolation) | M | qa-bot, security-bot |
+| TASK-012 | Base UI shell: routing, layout, auth session provider, route guards, API client | frontend-bot | TASK-005 | F1, F2 (shell) | M | qa-bot, security-bot |
+| TASK-013 | Playwright harness and smoke test | frontend-bot | TASK-005, TASK-007 | NFR: Playwright | S | qa-bot |
+| TASK-014 | CI job: compose up and Playwright e2e | devops-bot | TASK-007, TASK-008, TASK-013 | NFR: CI | S | qa-bot |
+| TASK-015 | Release notes M0 | docs-bot | TASK-011, TASK-012, TASK-014 | - | S | qa-bot |
+
+## Tasks: M1 MVP core (23 new tasks)
+| Task | Title | Owner bot | Blocked by | Story/Feature | Size | Reviewers |
+|------|-------|-----------|------------|---------------|------|-----------|
+| TASK-016 | Backend organizations: create and get current | backend-bot | TASK-011 | F2 | S | qa-bot, security-bot |
+| TASK-017 | Backend invites: get-or-create token, public preview, accept | backend-bot | TASK-016 | F3, F2 | M | qa-bot, security-bot |
+| TASK-018 | Backend posts: create and get | backend-bot | TASK-011 | F4 | M | qa-bot |
+| TASK-019 | Backend board: list with sort and filters | backend-bot | TASK-018 | F7 | M | qa-bot |
+| TASK-020 | Backend votes: toggle upvote | backend-bot | TASK-018 | F5 | M | qa-bot |
+| TASK-021 | Backend comments: list and create | backend-bot | TASK-018 | F6 | M | qa-bot |
+| TASK-022 | Backend status change (admin) | backend-bot | TASK-018 | F8 | S | qa-bot |
+| TASK-023 | Backend post delete (admin) | backend-bot | TASK-018 | F9 | S | qa-bot |
+| TASK-024 | UI: sign up and log in screens | frontend-bot | TASK-012 | F1 | M | qa-bot, security-bot |
+| TASK-025 | UI: create organization (onboarding) | frontend-bot | TASK-024 | F2 | S | qa-bot |
+| TASK-026 | UI: invite link (admin) and join page | frontend-bot | TASK-025 | F3, F2 | M | qa-bot, security-bot |
+| TASK-027 | UI: board with sort display, filters and empty states | frontend-bot | TASK-012 | F7 | M | qa-bot |
+| TASK-028 | UI: new post form and post detail page | frontend-bot | TASK-027 | F4 | M | qa-bot |
+| TASK-029 | UI: upvote control | frontend-bot | TASK-028 | F5 | S | qa-bot |
+| TASK-030 | UI: comments list and form | frontend-bot | TASK-028 | F6 | S | qa-bot |
+| TASK-031 | UI: admin status selector | frontend-bot | TASK-028 | F8 | S | qa-bot |
+| TASK-032 | UI: admin delete with confirmation | frontend-bot | TASK-028 | F9 | S | qa-bot |
+| TASK-033 | E2E: owner journey (sign up, org, invite, post, vote, comment, status) | frontend-bot | TASK-014, TASK-016, TASK-017, TASK-019, TASK-020, TASK-021, TASK-022, TASK-024, TASK-026, TASK-028, TASK-029, TASK-030, TASK-031 | E2E-1 #1-7 | M | qa-bot |
+| TASK-034 | E2E: permissions, isolation and failure paths | frontend-bot | TASK-033, TASK-023, TASK-032 | E2E-1 #8-9 | M | qa-bot |
+| TASK-035 | Security review of auth, tenancy, invites and secrets | security-bot | TASK-034 | Auth, tenancy, invites (NFR) | M | qa-bot |
+| TASK-036 | README: how to run, test and troubleshoot | docs-bot | TASK-034 | NFR: README | S | qa-bot |
+| TASK-037 | M1 acceptance run from a clean clone | qa-bot | TASK-034, TASK-035, TASK-036 | All features, DoD of the run | M | qa-bot, Orchestrator (qa-bot cannot review its own task) |
+| TASK-038 | Release notes M1 | docs-bot | TASK-037 | - | S | qa-bot |
+
+Already existing (not part of the 36): TASK-001 architect-bot (IN_REVIEW, PR #2, M0, blocks every task) and TASK-002 ba-bot (IN_REVIEW, PR #1 merged early, follow-up PR #3 open, M0).
+
+## Acceptance criteria summary per task
+All criteria are Given/When/Then in the linked stories in `docs/project/stories/`. Full task specs (TASK-###.md) are written with orchestrator-task-dispatch after approval.
+
+### M0
+- **TASK-003** (`feature/TASK-003-repo-layout-compose-db`): Dirs backend/ frontend/ e2e/; .gitignore excludes .env; .env.example has placeholders only (JWT_SECRET placeholder, how to generate it); compose `db` = postgres:18.6-alpine with healthcheck and named volume; `docker compose config` valid, no legacy `version:` key.
+- **TASK-004** (`feature/TASK-004-backend-skeleton`): uv project on Python 3.14 with stack.md pins and lock file; GET /api/v1/health; app refuses to start if JWT_SECRET missing or <32 chars; every error uses {error:{code,message,details}} and FastAPI 422 is remapped to 400 VALIDATION_ERROR; pytest runs against real PostgreSQL 18; backend lint/type tooling runs clean (tool pins needed, see Risks).
+- **TASK-005** (`feature/TASK-005-frontend-skeleton`): Vite ~8.3 + React ~19.3 + TypeScript ~6.0.3 (strict) from stack.md; scripts typecheck, lint (eslint + typescript-eslint), test (vitest), build all pass; react-router 8.5.1 library mode (createBrowserRouter) confirmed against reactrouter.com, or escalate (no silent switch); API types derived from api-contract.yaml; package-lock committed.
+- **TASK-006** (`feature/TASK-006-alembic-initial-ddl-tests`): Revision creates all 7 tables, constraints and indexes from data-model.md on clean PostgreSQL 18.6; tests prove UNIQUE(user_id,post_id) on votes, unique lower(email), memberships UNIQUE(user_id), invites UNIQUE(organization_id) and token length >=32, CHECKs (role, type, status, counts >=0), composite FK blocks a cross-org vote or comment, post delete cascades votes+comments; upgrade/downgrade round trip. Any DDL defect is reported to the Orchestrator (model change needs an ADR).
+- **TASK-007** (`feature/TASK-007-compose-full-stack`): Backend and frontend Dockerfiles (base image tags taken from stack.md versions: Python 3.14, Node 24); backend waits for healthy db and runs `alembic upgrade head` on start; frontend serves the build and proxies /api to backend (same origin, ADR-002); `docker compose up` from a clean clone with .env copied from .env.example gives health OK and the app shell in the browser; no secrets baked into images or printed in logs.
+- **TASK-008** (`feature/TASK-008-ci-backend-frontend`): Runs on pull_request and push to main on ubuntu-24.04 with actions pinned at v7 per stack.md; backend job: install, lint/type, pytest with postgres:18.6-alpine service; frontend job: typecheck, lint, vitest, build; test-only JWT secret value, no real secrets; job names are stable so the human can mark them required.
+- **TASK-009** (`feature/TASK-009-auth-signup-login`): POST /auth/signup 201, 400 on bad email/password (min 8, max 128), 409 'Email already registered' (case-insensitive); POST /auth/login 200, identical 401 'Invalid email or password' for wrong password and unknown email, dummy-hash verify; Argon2id RFC_9106_LOW_MEMORY per ADR-002 and hash time measured in the container (50-300 ms expected, report if not); JWT claims per ADR-002; password/hash never returned or logged. Stories: docs/project/stories/F1-1-signup-login.md #1-5.
+- **TASK-010** (`feature/TASK-010-auth-session-guard`): POST /auth/refresh rotates the HttpOnly SameSite=Strict cookie (401 if bad); POST /auth/logout 204 clears it; GET /auth/me; guard returns 401 UNAUTHENTICATED with WWW-Authenticate for missing/invalid/expired token, checks exp/iss/aud/typ and algorithms=[HS256]; per-IP 429 on login, signup, refresh and invite preview with no new service (beyond the brief, see Assumptions). Story F1-1 #6.
+- **TASK-011** (`feature/TASK-011-tenancy-core`): TenantContext built only from the verified org claim; repository base always filters organization_id (lookups by id AND org); require_org gives 403 ORG_REQUIRED when no org claim; role read from DB each request (401 if membership gone); require_admin gives 403; reusable two-organization fixtures and a cross-org test helper; no endpoint takes an organization id from the request.
+- **TASK-012** (`feature/TASK-012-ui-shell-auth-session`): Router layout with public (login, signup, invite) and protected (onboarding, board) routes; access token kept in memory only (never localStorage/sessionStorage); calls /auth/refresh on page load and on 401; guards redirect by state (logged out, no org, has org); API client parses the error format; vitest tests for guards and session handling.
+- **TASK-013** (`feature/TASK-013-playwright-harness`): e2e/ package with @playwright/test ~1.64.1; base URL from env (compose); helpers create unique users and organizations per run; smoke test: app loads and /api/v1/health returns OK against `docker compose up`; trace/screenshot kept on failure.
+- **TASK-014** (`feature/TASK-014-ci-e2e-job`): Job builds and starts compose, runs `npx playwright install --with-deps`, runs e2e, uploads the report (upload-artifact v7), always tears compose down; the job fails when e2e fails; only test-only secrets, JWT_SECRET never printed.
+- **TASK-015** (`feature/TASK-015-release-notes-m0`): docs/project/releases/M0.md: what the foundation delivers, how to run it, CI state, known limits; links to merged PRs and handoffs; facts only from handoffs and CI.
+
+### M1
+- **TASK-016** (`feature/TASK-016-org-create-current`): POST /organizations 201 (creator becomes admin; name 1-60 after trim, else 400; 409 'You already belong to an organization'; returns new access token with org claim and rotates cookie); GET /organizations/current; /auth/me shows org and role; 401 when logged out. Story docs/project/stories/F2-1-organization-create-join.md #1, #2, #5, #6.
+- **TASK-017** (`feature/TASK-017-invites`): POST /organizations/current/invite: admin 200, member 403; one persistent token per org (>=32 chars, 256-bit), concurrent calls still yield one; GET /invites/{token} public preview (org name only, 404 INVITE_NOT_FOUND); POST /invites/{token}/accept makes the user a member and issues new token (404 invalid, 409 already in an org incl. own, 401); accepted user sees only that org; token never logged. Stories F3-1 #1-5, F2-1 #3-5.
+- **TASK-018** (`feature/TASK-018-posts-create-get`): POST /posts 201 (status New, 0 votes, author set; 400 for title 1-120, description 1-2000 trimmed, type idea|bug); GET /posts/{id} with author display name, counts, has_voted; 404 for other org or missing; 401; 403 ORG_REQUIRED. Story docs/project/stories/F4-1-posts.md #1-6.
+- **TASK-019** (`feature/TASK-019-board-list-filter`): GET /posts sorted by vote_count desc, created_at desc, id desc; filters type and status combine with AND; unknown filter value gives 400 naming the filter; empty gives {items:[]}; only own org; no pagination; items carry vote_count, comment_count, has_voted; 401. Story docs/project/stories/F7-1-board.md #1-6.
+- **TASK-020** (`feature/TASK-020-vote-toggle`): POST /posts/{id}/vote toggles and returns VoteState; never more than one vote per user per post (concurrent double-request test); vote_count changes in the same transaction only when a row is inserted or deleted; self-vote allowed; 404 cross-org or missing; 401. Story docs/project/stories/F5-1-upvotes.md #1-6.
+- **TASK-021** (`feature/TASK-021-comments`): GET /posts/{id}/comments oldest first as {items}; POST comment 201 (body 1-1000 trimmed, else 400); comment_count updated in the same transaction; admin may comment; 404 cross-org or missing; 401. Story docs/project/stories/F6-1-comments.md #1-6.
+- **TASK-022** (`feature/TASK-022-status-change`): PATCH /posts/{id}/status, admin only: any status to any of New, Planned, In Progress, Done; same status is a no-op 200; invalid value 400 with post unchanged; member 403 unchanged; other org 404; 401; structured log of the admin action (actor, org, post, time). Story docs/project/stories/F8-1-status-change.md #1-6.
+- **TASK-023** (`feature/TASK-023-post-delete`): DELETE /posts/{id}, admin only, 204; hard delete cascades comments and votes; member 403 and post intact; other org 404; second delete 404; 401; structured log. Story docs/project/stories/F9-1-delete-post.md #1-5.
+- **TASK-024** (`feature/TASK-024-ui-signup-login`): Forms with field-level errors (email format, password >=8, required); 'Email already registered' and 'Invalid email or password' texts (ASSUMED in stories); after signup lands on the 'create or join organization' step; after login lands on board, or the onboarding step with no org; vitest tests. Sign-up form fields must match the contract (display_name question, see Inconsistencies). Story docs/project/stories/F1-1-signup-login.md #1-5.
+- **TASK-025** (`feature/TASK-025-ui-create-org`): Create-org form (name 1-60, field-level error); success makes the user admin and shows the empty board; 409 shows 'You already belong to an organization'; session token replaced with the new org-scoped token. Story F2-1 #1, #2, #5.
+- **TASK-026** (`feature/TASK-026-ui-invite`): Admin 'Invite' control shows the full URL and Copy (clipboard, 'Copied' ~2 s), hidden for members; /invite/:token shows org name from preview; logged-out user signs up or logs in first, then the invite is accepted; 'Invite link is invalid' on 404; 409 message. Stories F3-1 #1-3, F2-1 #3-5.
+- **TASK-027** (`feature/TASK-027-ui-board`): Rows show title, type, status, vote count + control, comment count in server order; type and status filters with 'All', combined AND; empty states 'No posts yet' + New post action and 'No posts match these filters' + Clear filters; shows only own org data. Story F7-1 #1-4.
+- **TASK-028** (`feature/TASK-028-ui-post-create-detail`): Form with title, description, type idea|bug and field-level errors; created post appears on the board as New with 0 votes; detail page shows title, description, type, status, votes, author, created time; not-found view for unknown id. Story F4-1 #1-5.
+- **TASK-029** (`feature/TASK-029-ui-vote`): Control on board rows and post page; active state from has_voted; click toggles and count follows VoteState; rapid double click never double counts. Story F5-1 #1-3.
+- **TASK-030** (`feature/TASK-030-ui-comments`): Comments oldest first with author, time, text; 'No comments yet'; add-comment form validates 1-1000 and updates the list and count. Story F6-1.
+- **TASK-031** (`feature/TASK-031-ui-status`): Admin sees a selector with the 4 statuses on the post page, board and detail show the new status; members see text only; a 403 from the API is shown and the status is unchanged. Story F8-1 #1-3.
+- **TASK-032** (`feature/TASK-032-ui-delete`): Admin-only Delete opens 'Delete this post?' with Delete/Cancel; Cancel leaves the post; confirm removes it and returns to the board; hidden for members. Story F9-1 #1, #2.
+- **TASK-033** (`feature/TASK-033-e2e-journey`): Playwright test of docs/project/stories/E2E-1-owner-journey.md steps 1-7 with two browser contexts (Alice admin, Bob member) against compose: Alice signs up, creates Acme, copies invite link; Bob signs up, opens link, accepts; Bob posts; both vote, Bob un-votes; Bob comments; Alice sets Planned; filter by Planned lists the post. Runs in CI.
+- **TASK-034** (`feature/TASK-034-e2e-permissions-isolation`): Bob (member) has no status/delete controls and direct API calls return 403 with post unchanged; Carol with org Beta sees 'No posts yet' and gets 404 for the Acme post id; member 403 on invite; logged-out 401; duplicate email and invalid invite link paths in the UI; admin delete with confirm.
+- **TASK-035** (`feature/TASK-035-security-review-m1`): docs/project/reviews/M1-security-review.md: checks against ADR-002 (Argon2id parameters, JWT claims and algorithm pinning, cookie flags, access token memory-only), a tenant-isolation test exists for every data endpoint, no secrets in repo, CI or logs, same-origin proxy and CORS, invite token handling (admin-only, never logged), rate limits work, dependency audit with tools already in the stack (npm audit); findings with severity; Critical/High become fix tasks and must be closed before acceptance.
+- **TASK-036** (`feature/TASK-036-readme`): README.md: prerequisites (Docker Compose v5.6), clone, copy .env.example to .env and generate JWT_SECRET, `docker compose up`, URLs, first-user walkthrough, how to run backend, frontend and e2e tests, CI, troubleshooting, links to docs/project; every command executed by docs-bot from a clean clone as evidence.
+- **TASK-037** (`feature/TASK-037-m1-acceptance`): Follow only the README on a clean clone: `docker compose up`, walk the full journey in a browser, confirm all CI checks green on main, traceability table from every story criterion (F1-F9, E2E-1) to a test, written to docs/project/reviews/M1-acceptance.md. This is the evidence for the run's Definition of Done.
+- **TASK-038** (`feature/TASK-038-release-notes-m1`): docs/project/releases/M1.md: features F1-F9 delivered, how to run, test and CI evidence links, known limitations (no refresh-token revocation, no pagination, invite link not revocable, one org per user), assumptions confirmed by the human.
+
+## Critical path
+Logical dependency chain (longest path to the finish):
+TASK-001 (review + merge of PR #2) -> TASK-003 -> TASK-004 -> TASK-006 -> TASK-009 -> TASK-010 -> TASK-011 -> TASK-018 -> TASK-019/020/021/022/023 -> TASK-033 -> TASK-034 -> TASK-035 -> TASK-037 -> TASK-038.
+
+Resource view: backend-bot has 13 tasks that depend on each other in a chain (004, 006, 009, 010, 011, 016, 017, 018, 019, 020, 021, 022, 023), so the backend lane is the real bottleneck. Run it in this order and review each PR in the same working session so frontend-bot can integrate early. Priority is to the auth, organization and posts endpoints first (TASK-009 to 018), because TASK-033 needs every feature on both sides.
+
+TASK-033 waits for every feature slice, backend and frontend. TASK-035 (security review) and TASK-036 (README) both start after TASK-034 and run in parallel; TASK-037 waits for both.
+
+## Parallel lanes
+| Lane | Bot | Order | Can start when |
+|------|-----|-------|----------------|
+| A Infrastructure | devops-bot | 003, then 007 (needs 004, 005, 006), 008 (needs 004, 005), 014 (needs 007, 008, 013) | TASK-001 merged and plan approved |
+| B Backend | backend-bot | 004, 006, 009, 010, 011, 016, 017, 018, 019, 020, 021, 022, 023 | after TASK-003 |
+| C Frontend | frontend-bot | 005, 012, 013 (after 007), 024, 025, 026, 027, 028, 029, 030, 031, 032, 033, 034 | after TASK-003 |
+| D Verification and docs | qa-bot, security-bot, docs-bot | qa-bot reviews each PR; docs-bot 015; then 035, 036 in parallel, then 037, 038 | per task blockers |
+
+Parallel windows:
+- After TASK-003: TASK-004 and TASK-005 run in parallel.
+- After TASK-004/005/006: TASK-007, TASK-008 and TASK-009 run in parallel (devops, devops, backend).
+- After TASK-012: frontend 024 onward runs independently of the backend lane. After TASK-011: backend 016 and 018 can start; 019 to 023 only need 018.
+- Frontend tasks 027 to 032 depend on the shell and contract, not on the finished backend; they are tested with mocked API responses taken from the contract, and the real integration is proven by the E2E tasks (033, 034). Each backend task must also test its responses against the shapes in `api-contract.yaml`, so contract drift is caught early.
+- Never run two tasks that edit the same files in parallel: the backend router registration and the frontend route table are shared, so merge in dependency order and rebase.
+
+## Deferred / later
+- M2 and M3 entirely (billing, notifications, admin panel, audit log table, monitoring, legal pages, production deploy).
+- Refresh-token revocation (jti table) and reuse detection; PostgreSQL row-level security as second isolation layer; persistent audit log of admin actions (structured logs only for now).
+- Invite revocation or regeneration, pagination of board and comments, multiple organizations per user, edit/delete own posts and comments, search, email notifications.
+- Upgrades: TypeScript 7 (when typescript-eslint supports it), Python 3.15, Node 26 LTS, SQLAlchemy 2.1 fallback to 2.0.55 only if needed.
+
+## Definition of Done
+Per task (TEAM-CONVENTIONS section 4):
+- [ ] Every acceptance criterion met and covered by a test
+- [ ] Build, tests, lint and type checks pass in CI
+- [ ] Follows stack.md versions and the approved contracts (api-contract.yaml, data-model.md)
+- [ ] Tenant isolation and authorization respected on every data access
+- [ ] No secrets, keys or passwords in code, config, logs or docs
+- [ ] No unrequested changes (scope creep)
+- [ ] Handoff report written
+- [ ] Reviewed and passed by qa-bot (and security-bot where required)
+
+For the whole run (done means all of these):
+- [ ] On a clean clone, `docker compose up` starts db, backend and frontend, and the full journey works in the browser: sign up, create organization, invite a second user, post, vote, comment, change status
+- [ ] All CI checks pass on main: backend pytest, frontend typecheck/lint/build/unit tests, Playwright e2e
+- [ ] README explains how to run it (and the commands were run from a clean clone)
+- [ ] Security review done and no open Critical/High findings
+- [ ] qa-bot acceptance report (TASK-037) with a story-to-test traceability table
+- [ ] Release notes M0 and M1 written; the human received a short status after each milestone
+
+## Risks
+| # | Risk | Likelihood / impact | Mitigation |
+|---|------|---------------------|------------|
+| 1 | TypeScript 6.0.3 is pinned instead of the stable 7.0.2 because typescript-eslint 8.72.1 only supports TypeScript below 6.1.0 | Certain / low | Human confirms; revisit in a later ADR when typescript-eslint supports TS 7 |
+| 2 | react-router 8.5.1 library mode (SPA, createBrowserRouter) is unverified; architect-bot only read the framework-mode docs | Medium / medium | TASK-005 verifies against reactrouter.com first; if it does not work, frontend-bot reports to the Orchestrator and does not switch silently |
+| 3 | Refresh tokens are stateless: no revocation before the 7-day expiry, logout only clears the cookie | Certain / low (free product, little PII) | Accepted for MVP, human confirms; follow-up task listed in Deferred |
+| 4 | No CI exists yet, so early tasks (003 to 007) are reviewed without automated checks | Certain / medium | TASK-008 goes right after the skeletons; qa-bot runs tests locally in review until then and records the evidence |
+| 5 | Stories are READY only conditional on brief approval; the brief is still DRAFT. A brief change changes stories, data model and contract | Medium / high | Single approval message; after approval, stories and brief are frozen; any change goes through the Orchestrator and an ADR |
+| 6 | The DDL in data-model.md has never run on PostgreSQL | Medium / medium | TASK-006 runs it with constraint tests before any endpoint is built on it |
+| 7 | Newest releases carry regression risk: SQLAlchemy 2.1 (GA 2026-09-24), pytest 9.2.0 and react-router 8.5.1 (both released 2026-10-27) | Medium / medium | Lock files; stack.md names SQLAlchemy 2.0.55 as fallback; changing any pin needs an ADR |
+| 8 | Backend lane is a 13-task chain handled by one bot | High / medium | Order by value, same-day reviews, keep tasks small; devops and frontend lanes absorb the parallel work |
+| 9 | Shared files edited by parallel tasks (router registration, route table, compose) | Medium / low | Merge in dependency order, rebase before PR |
+| 10 | Argon2id with 64 MiB per hash may be heavy in small containers and CI runners | Low / medium | TASK-009 measures it; parameters are not lowered without a new ADR |
+| 11 | Tooling not in stack.md (backend lint/type checker, OpenAPI type generator, uv version, Python/Node Docker image tags, TanStack Query and Vitest are only "proposed") would make bots pick versions from memory | Certain / medium | Ask architect-bot to add verified pins to stack.md (small addendum on PR #2 or a short follow-up) before TASK-004, 005, 007; bots must not invent versions |
+| 12 | Bots share one GitHub identity; PR #1 was merged before qa-bot finished (process breach) | Happened once / low | Merge only through the quality gate; see the merge-approval item below |
+| 13 | Bots without a file-write connector tool cannot commit review and handoff files themselves | Medium / medium | Use cloud agents or push access for committing; track per task in the board note |
+
+## Inconsistencies found in the inputs (to settle before dispatch)
+1. **display_name:** api-contract.yaml (SignupRequest requires `display_name`, 1-80) and data-model.md (`users.display_name`) have it, but neither the brief nor the stories do. F1-1 and E2E-1 sign up with email and password only. Options: ba-bot adds it to F1-1 and E2E-1, or architect-bot makes it optional or derives it from the email. Affects TASK-009, 024 and 033.
+2. **Password maximum 128** is in ADR-002 and the contract, not in F1-1 (stories only state the minimum 8).
+3. **Rate limiting (429)** on login, signup, refresh and invite preview is in ADR-002 and the contract but not in the brief or stories. It is included in TASK-010; the human may drop it.
+4. **Extra endpoints:** POST /auth/refresh and POST /auth/logout were added beyond the TASK-001 endpoint list; the vote is one toggle endpoint (TASK-001 listed add and remove); pagination is absent (TASK-001 asked for pagination rules; stories chose none). Consistent with the stories, but the data model still describes keyset-pagination indexes and the contract names `PostPage` and `CommentPage` schemas, which is harmless but confusing.
+5. **Tooling gaps in stack.md** (see Risk 11): `uv.lock` is required but uv has no pinned version; no backend lint or type tools; no OpenAPI client generator; no Python or Node Docker image tags other than `postgres:18.6-alpine`; TanStack Query ~5.105.0 and Vitest ~5.0.5 are marked "proposed" and need approval as part of the stack.
+6. **Stories vs contract on no-organization users:** the contract returns 403 ORG_REQUIRED for a logged-in user without an organization; no story covers it (qa-bot suggested it as optional). It is covered by tests in TASK-011 and TASK-018 but there is no story criterion.
+7. **Status of documents:** brief.md says DRAFT; stack.md, ADR-001/002, data-model.md and api-contract.yaml say Proposed; stories say READY "conditional on brief approval". All of these flip with the single human approval.
+8. **Stale PR references:** TASK-001 handoff still says the PR was not opened (PR #2 exists and is open); TASK-002 handoff header still names PR #1 although the fixes are in PR #3; main's board.md still shows TASK-001 and 002 as IN_PROGRESS.
+9. **Owner's done definition:** TASK-002 refers to it but it was not written anywhere in the repo; E2E-1 follows the step list from the intake message. The Definition of Done above now writes it down.
+
+## Assumptions and decisions needing the human
+Approval requested in one message: brief + pinned stack + this plan.
+
+Decisions:
+1. **Approve the brief** (brief.md, currently DRAFT) and with it the stories F1-F9 and E2E-1.
+2. **Approve the pinned stack** (stack.md, ADR-001, ADR-002): in particular **TypeScript 6.0.3 instead of 7.0.2** (lint compatibility), and the accepted freshness exceptions (argon2-cffi 25.1.0, email-validator 2.3.0, httpx 0.28.1).
+3. **Extra endpoints** POST /auth/refresh and POST /auth/logout beyond the requested list (logout is needed to clear the HttpOnly cookie).
+4. **No refresh-token revocation in the MVP** (stateless refresh tokens, valid up to 7 days).
+5. **display_name** at signup: keep it (stories and E2E need updating) or remove it (contract and data model need updating).
+6. **Rate limiting** (429) in scope (TASK-010) or dropped.
+7. **Standing merge approval:** your permissions block merging to main without your approval. Please allow the Orchestrator to merge PRs that have passed the quality gate (CI green, qa-bot approval, security-bot where required), or say that you will merge yourself.
+8. **Branch protection and required checks** on `main` are a repository setting; if you want them, only you can set them. The CI job names will be stable for that.
+
+ASSUMED values and behaviours (marked ASSUMED in the stories; confirm or replace):
+- Limits: password min 8 (max 128); organization name 1-60; post title 1-120; post description 1-2000 (required); comment 1-1000; invite token min 32 chars (43-char random token in the data model).
+- One persistent invite token per organization; the Invite button always shows the same link; no revocation in the MVP (decided; follows the brief's assumption).
+- A logged-out user who opens an invite link signs up or logs in first, and the invite is applied after.
+- An admin can also post, vote and comment.
+- Deleting a post is permanent and removes its comments and votes, behind a confirmation dialog.
+- A user can vote on their own post; voting again removes the vote (toggle).
+- The board has no pagination; type and status filters combine with AND; an unknown filter value is rejected with a validation error (400).
+- Not-logged-in requests get 401 (the brief and TASK-002 name only 403 and 404).
+- Same-status change is accepted and does nothing; members cannot edit or delete posts or comments; one organization per user.
+- Exact UI and error texts ("Email already registered", "Invalid email or password", "create or join organization", "Invite link is invalid", "You already belong to an organization", "No posts yet", "No posts match these filters", "New post", "Clear filters", "No comments yet", "Add comment", "Delete this post?", "Invite", "Copy", "Copied").
+
+Things only the human does (TEAM-CONVENTIONS section 8) that this run needs: none beyond the decisions above. No accounts, API keys, payments, DNS or deploys are required; CI uses test-only values and the local `.env` holds a generated JWT_SECRET that is never committed.
+
+## Human decisions recorded (2026-10-27)
+- Brief, pinned stack and plan approved in one message.
+- TypeScript 6.0.3 (not 7.0.2). Extra POST /auth/refresh and /auth/logout approved; no refresh-token revocation in the MVP.
+- Display name required at signup (stories to be updated in TASK-039). Rate limiting kept.
+- Standing approval: the Orchestrator may merge PRs that pass qa-bot's review (and security-bot's where required). Anything else that is a human gate still comes to the human.
+- New follow-up task: TASK-039 (ba-bot): stories updated for display name, auth extras and rate limits; fix tasks from TASK-040.
