@@ -20,7 +20,7 @@ RUNTIME_PINS = {
 }
 
 DEV_PINS = {
-    "httpx": "~=0.28.1",
+    "httpx2": "~=2.16.0",
     "mypy": "~=2.4.0",
     "pytest": "~=9.2.0",
     "ruff": "~=0.17.3",

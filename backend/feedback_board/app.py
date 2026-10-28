@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlalchemy import Engine
 
 from feedback_board.api.health import build_health_router
 from feedback_board.db import create_db_engine
@@ -12,6 +11,7 @@ from feedback_board.errors import register_exception_handlers
 from feedback_board.logging_config import configure_logging
 from feedback_board.middleware import SecurityHeadersMiddleware
 from feedback_board.repositories.health import HealthRepository
+from feedback_board.role_check import StartupRefused, assert_runtime_role
 from feedback_board.services.health import HealthService
 from feedback_board.settings import Settings, load_settings
 
@@ -22,10 +22,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_db_engine(resolved.database_url.get_secret_value())
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        yield
-        stored: Engine = app.state.engine
-        stored.dispose()
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # uvicorn runs this before it binds the listen socket. No setting skips it.
+        try:
+            assert_runtime_role(engine)
+        except StartupRefused:
+            engine.dispose()
+            raise
+        except Exception:
+            engine.dispose()
+            raise StartupRefused(
+                "startup refused: database role check could not be completed",
+            ) from None
+        try:
+            yield
+        finally:
+            engine.dispose()
 
     # The contract does not define /docs, /redoc, or /openapi.json.
     app = FastAPI(

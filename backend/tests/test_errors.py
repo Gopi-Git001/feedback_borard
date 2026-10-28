@@ -2,6 +2,7 @@
 
 import io
 import logging
+import secrets
 
 import pytest
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from feedback_board.app import create_app
 from feedback_board.logging_config import JsonFormatter
+from feedback_board.role_check import StartupRefused
 
 
 def _error(response_json: object) -> dict[str, object]:
@@ -36,10 +38,10 @@ def test_undefined_edit_route_is_not_415(client: TestClient) -> None:
         content="not-json",
         headers={"Content-Type": "text/plain"},
     )
-    assert response.status_code in {404, 405}
+    assert response.status_code == 404
     assert response.status_code != 415
     error = _error(response.json())
-    assert error["code"] in {"NOT_FOUND", "METHOD_NOT_ALLOWED"}
+    assert error["code"] == "NOT_FOUND"
     assert error["details"] == []
 
 
@@ -123,22 +125,13 @@ def test_unhandled_exception_is_500_without_the_message(app: FastAPI) -> None:
     assert secret not in logged
 
 
-def test_database_outage_uses_the_error_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    password = "db-password-should-not-leak"
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        f"postgresql+psycopg://feedback_owner:{password}@127.0.0.1:1/feedback_board",
-    )
+def test_unreachable_database_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    password = secrets.token_hex(16)
+    url = f"postgresql+psycopg://feedback_app:{password}@127.0.0.1:1/feedback_board"
+    monkeypatch.setenv("DATABASE_URL", url)
     application = create_app()
-    try:
-        with TestClient(application, raise_server_exceptions=False) as client:
-            response = client.get("/api/v1/health")
-    finally:
-        application.state.engine.dispose()
-    assert response.status_code == 503
-    error = _error(response.json())
-    assert error["code"] == "INTERNAL_ERROR"
-    assert error["message"] == "Database unavailable"
-    assert error["details"] == []
-    assert password not in response.text
-    assert response.headers["cache-control"] == "no-store"
+    with pytest.raises(StartupRefused) as caught:
+        with TestClient(application):
+            pass
+    assert password not in str(caught.value)
+    assert url not in str(caught.value)
