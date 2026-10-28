@@ -16,7 +16,7 @@ As a member, I want to comment on a post, so that I can discuss the feedback wit
 - No one can edit or delete comments in the MVP (ASSUMED). The brief only says members cannot edit or delete posts and lists comment editing nowhere in the MVP; deleting a post (F9) removes its comments.
 - A comment belongs to one post and so to that post's organization.
 - A comment names its author by display name only; the email is never shown to other members (API contract).
-- A request that creates a comment with a Content-Type whose media type is not "application/json" is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
+- A request that creates a comment with a Content-Type that the media-type rule of F1-9 refuses is answered 415 after the limiter (where there is one) and before authentication, and changes nothing (F1-9; not a criterion of this story).
 
 ## UI notes
 - Comment list under the post, then a text box and "Add comment" button (ASSUMED label).
@@ -33,5 +33,5 @@ Editing or deleting comments, replies/threads, mentions, notifications, markdown
 - ASSUMED: exact UI texts "No comments yet" and "Add comment"; no one can edit or delete comments in the MVP.
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
-- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Checked against the contract on main (commit 4a2e08423380ee872acf08043bd046adda4c4766).
-- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): api-contract.yaml is on main (commit 4a2e08423380ee872acf08043bd046adda4c4766, which merged PR #2; contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line still says Proposed). Comment author is exposed as display name only (no email); comment limit 1-1000 matches.
+- HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract; 401 is ASSUMED (the contract lists it but itself marks it ASSUMED). Checked against the contract on main (11497e9a337fdad6d56582077ac3c529d77e3e44, which contains the merges of PR #2 (54f79e4), PR #6 (4a2e084) and PR #7 (11497e9)).
+- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): api-contract.yaml is on main (11497e9a337fdad6d56582077ac3c529d77e3e44, which contains the merges of PR #2 (54f79e4), PR #6 (4a2e084) and PR #7 (11497e9); contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line still says Proposed). Comment author is exposed as display name only (no email); comment limit 1-1000 matches.
