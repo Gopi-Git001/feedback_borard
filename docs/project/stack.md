@@ -98,17 +98,17 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 
 | Variable | Type / format | Default | Read by | Prod-required | Meaning (owner) |
 |---|---|---|---|---|---|
-| `APP_ENV` | enum `development`, `test`, `production` | **none**: unset or any other value means the app refuses to start (fail closed) | backend | yes | switches the dev-only relaxations on or off (ADR-002, ADR-004) |
+| `APP_ENV` | enum `development`, `test`, `production` | **none**: unset or any other value means the app refuses to start (fail closed) | backend | yes | switches the dev-only relaxations on or off (ADR-002, ADR-004); every relaxation is refused at startup unless this is `development` or `test` (and also when `FRONTEND_ORIGIN` is a non-local `https://` origin) |
 | `JWT_SECRET` | unpadded base64url, decodes to at least 32 bytes, at least 16 distinct characters, no weak fragment | none (placeholder in `.env.example` is rejected on purpose) | backend | yes | HS256 signing key for access and refresh JWTs (ADR-002) |
 | `INVITE_TOKEN_KEY` | same rule as `JWT_SECRET`; must differ from it; the HMAC key is the decoded bytes | none (rejected placeholder) | backend | yes | derives the invite token (ADR-003); rotation runbook in ADR-003 |
 | `DATABASE_URL` | PostgreSQL URL of the **restricted, non-owner role** | none (compose sets it for the dev role) | backend | yes | runtime connection (ADR-004 section 5) |
 | `DATABASE_MIGRATION_URL` | PostgreSQL URL of the **owner role** | none | migrate (never the backend at runtime) | yes, for deploys that migrate | Alembic migrations (ADR-004 section 5) |
 | `FRONTEND_ORIGIN` | bare origin `scheme://host[:port]`, no path or trailing slash | none (dev example `http://localhost:8080`, devops-bot fixes the port) | backend (CSRF `Origin` check, CORS), compose | yes | the one allowed origin (ADR-004) |
-| `COOKIE_SECURE` | boolean | `true` | backend | must be `true` | `Secure` flag of the refresh cookie; `false` only with `APP_ENV` `development` or `test` (ADR-004) |
+| `COOKIE_SECURE` | boolean | `true` | backend | must be `true` | `Secure` flag of the refresh cookie; `false` only with `APP_ENV` `development` or `test`; startup exits otherwise (ADR-002 relaxation guard, ADR-004) |
 | `TRUSTED_PROXY_IPS` | comma-separated exact IP addresses (no `*`, no `0.0.0.0/0`, no `::/0`) | compose sets the fixed nginx address, for example `172.28.0.10` | backend | yes, non-empty | peers whose `X-Forwarded-For` is believed (ADR-002) |
 | `ARGON2_MAX_CONCURRENCY` | integer 1-64 | `4` | backend | no | concurrent Argon2 hashes per worker, at most 256 MiB at 4 (ADR-002) |
-| `REFRESH_REUSE_LEEWAY_SECONDS` | integer 0-60 | `10` | backend | no | a reused refresh token inside this window after rotation gets 401 without revoking the family (ADR-002) |
-| `RATE_LIMIT_ENABLED` | boolean | `true` | backend | must be `true` | switches all limits off for tests only (ADR-002); **e2e, load and CI test runs must set it to `false`** (non-production only, ADR-004) |
+| `REFRESH_REUSE_LEEWAY_SECONDS` | integer 0-60 | `10` | backend | no | a refresh token revoked with reason `rotated` less than this many seconds ago gets 401 without revoking the family and without `Set-Cookie`; a token revoked by logout or eviction is never covered (ADR-002) |
+| `RATE_LIMIT_ENABLED` | boolean | `true` | backend | must be `true` | switches all limits off for tests only (ADR-002); **e2e, load and CI test runs set it to `false`, except one e2e job and the TASK-010 rate-limit tests, which keep it `true`** (non-production only: startup exits non-zero with `APP_ENV=production`, unset or unknown, ADR-002 relaxation guard, ADR-004) |
 | `RATE_LIMIT_SIGNUP_PER_IP` | `<max>/<window_seconds>` | `10/60` | backend | no | signup, per client IP (stories F1-2) |
 | `RATE_LIMIT_LOGIN_PER_IP` | same | `10/60` | backend | no | login, per client IP (F1-2) |
 | `RATE_LIMIT_REFRESH_PER_IP` | same | `10/60` | backend | no | refresh, per client IP (F1-2) |
@@ -117,6 +117,8 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 | `RATE_LIMIT_ORG_CREATE_PER_USER` | same | `10/60` | backend | no | organization create, per user id (architect addition) |
 
 Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit or lockout: out of scope, not offered, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
+
+Accepted risks and known limits that touch these settings (rate limits, `RATE_LIMIT_ENABLED`, `REFRESH_REUSE_LEEWAY_SECONDS`, `TRUSTED_PROXY_IPS`, `INVITE_TOKEN_KEY`) are recorded only in ADR-004 section 7 (register R1-R17); there is no second copy here.
 
 ## Change log
 - 2026-10-27: initial pinned set (TASK-001, architect-bot).
