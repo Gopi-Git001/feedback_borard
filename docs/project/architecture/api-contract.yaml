@@ -20,7 +20,7 @@ info:
       403 forbidden (wrong role; or no organization yet, **ASSUMED**, see below), 404 not found (including
       other-organization resources), 409 conflict, 429 rate limited (approved per Orchestrator message 2026-10-27, relayed from the human).
       FastAPI's default 422 for body validation must be remapped to 400 `VALIDATION_ERROR`; no operation returns 422.
-    - **Order of checks:** authentication (401), then resource lookup scoped to the caller's organization
+    - **Order of checks (one rule, ADR-004 section 3):** 429 (rate limiter), 415 (`Content-Type`), 401 (authentication), 400 (body shape), 404 (lookup), 409 (conflict). Each endpoint uses the subset that applies to it, in this order (only `POST /invites/accept` has all six). For the protected endpoints: authentication (401), then resource lookup scoped to the caller's organization
       (404, including "exists in another organization"), then role (403). A member who targets an admin-only
       operation on a post of another organization gets 404, not 403, so existence is never revealed.
     - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). The same applies to `display_name` at signup: **trim leading and trailing whitespace first, then validate the length (1-80)**; the trimmed value is stored. `email` is compared case-insensitively. **The `minLength`/`maxLength` values in the schemas below describe the trimmed value**: the server validates lengths after trimming, so a client or generated validator must not reject the raw input on those keywords alone (for example `"  Ana  "` is valid).
@@ -55,7 +55,7 @@ info:
       quota; accepted risk R10, ADR-004), then the CSRF guard (`X-Requested-With` and `Origin`, 403), then the cookie logic.
       `/auth/logout` has no rate limit: CSRF guard, then the logout logic.
     - **Content-Type and `Vary` (ADR-004, security-bot N13):** a request with a body must send `Content-Type: application/json`, otherwise
-      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413).
+      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413). It is checked after the rate limiter and before authentication.
       The responses of `/auth/refresh` and `/auth/logout` send `Vary: Origin`.
     - **Security headers and caching (ADR-004):** **every response under `/api/v1/*`**, errors included, sends
       `Cache-Control: no-store` (the `NoStore` header is also declared explicitly on token-bearing responses); every API response also sends
@@ -184,7 +184,7 @@ paths:
            marks the old one as rotated, and returns a new access token whose `org` claim is re-read from the
            database (membership), not copied from the old token.
         401 if the cookie is missing, invalid, expired, revoked or reused. **Cookie rule on the 401 (the same case list as ADR-002, ADR-004 and data-model.md section 3.8):** a 401 from `/auth/refresh` sends **no `Set-Cookie` in exactly one case**: the presented token's own row has `revoked_reason = 'rotated'` and `revoked_at` is **less than** `REFRESH_REUSE_LEEWAY_SECONDS` (default 10) ago; nothing is changed (two tabs racing, the winning tab's new cookie must survive). **Every other 401 clears the cookie** (`Set-Cookie: refresh_token=; Max-Age=0`): (a) the cookie is missing, or its JWT is invalid, has the wrong `typ` or is expired; (b) there is no row for the token, or its `expires_at` has passed (the 7-day cap included); (c) `revoked_reason = 'rotated'` and `revoked_at` is 10 s or more ago: reuse, every active row of the family is revoked with `reuse_detected` (none if the family is already dead); (d) any other `revoked_reason` (`logout`, `evicted`, `reuse_detected`), **at any time, including within 10 s of `revoked_at`**: the leeway does not apply to it, so it is treated as reuse of a dead family and the answer is 401 with the cookie cleared (the family is already revoked, nothing else changes).
-        401 is also answered when the session was evicted by the 10-session cap. Requires the CSRF guard header (see conventions). Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED); the limit is checked before the guard (so a request rejected by the guard still counts, risk R10). **A 429 here means "try again after `Retry-After`"; the SPA must not treat it as a logged-out session** (the cookie is untouched by a 429).
+        401 is also answered when the session was evicted by the 10-session cap. Requires the CSRF guard header (see conventions). Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED); the limit is checked before the guard (so a request rejected by the guard still counts, risk R10). **A 429 here means "try again after `Retry-After`"; the SPA must not treat it as a logged-out session** (the cookie is untouched by a 429). ASSUMED: the SPA shows a retry-later message that honours `Retry-After` and does not retry automatically in a loop.
       x-extra: true
       x-features: []
       x-roles: [public]
@@ -363,7 +363,7 @@ paths:
         Public, so the invited person can see which organization they would join before signing up.
         The token is sent in the **request body**, never in the path or query (ADR-003). Returns only the
         organization name. An unknown or malformed token string (any length) returns 404 `INVITE_NOT_FOUND` (message
-        `Invite link is invalid`); a missing or non-string `token` field, or any extra field in the body (`additionalProperties: false`), returns 400 `VALIDATION_ERROR`. No side effects (POST only to keep the token out of the URL). Order of checks: 429, 400, 404.
+        `Invite link is invalid`); a missing or non-string `token` field, or any extra field in the body (`additionalProperties: false`), returns 400 `VALIDATION_ERROR`. No side effects (POST only to keep the token out of the URL). Order of checks: 429 (limiter), 415 (`Content-Type`), 400, 404 (the subset of 429, 415, 401, 400, 404, 409 that applies to a public endpoint with no membership check).
         Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED), counted for any token valid or not. `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [public]
@@ -396,7 +396,7 @@ paths:
         path or query (ADR-003). Creates a `member` membership. The invite is not consumed. Returns a **new access
         token with the `org` claim**; the refresh cookie is not rotated. 409 `ALREADY_IN_ORGANIZATION` if the user
         already belongs to an organization; 404 `INVITE_NOT_FOUND` for an unknown or malformed token string; 400 `VALIDATION_ERROR` for a missing or non-string `token` field or any extra field in the body (`additionalProperties: false`).
-        Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED), checked before authentication, so every attempt counts. **Order of checks: 429 (limiter), then 401 (access token), then 400 (body shape), then the token lookup (404), then the membership check (409).** `Cache-Control: no-store`.
+        Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED), checked before authentication, so every attempt counts. **Order of checks: 429 (limiter), then 415 (`Content-Type` not `application/json`; checked after the limiter), then 401 (access token), then 400 (body shape), then the token lookup (404), then the membership check (409).** `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [no-organization]
       requestBody:
