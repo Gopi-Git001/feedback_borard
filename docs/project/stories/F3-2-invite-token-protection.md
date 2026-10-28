@@ -23,7 +23,7 @@ Traces to brief feature F3 and to the approved addition "The invite token never 
 
 ## UI notes
 - The "/join" page shows the organization name from the preview and "Join" (ASSUMED label) after login, or the sign-up and login choice when logged out (ASSUMED layout).
-- Any 404 from preview or accept shows "Invite link is invalid" (contract-sourced: api-contract.yaml, NotFound response and previewInvite description; ADR-003 Decision, "Link and API"; the brief gives no wording and the contract on main still states status Proposed).
+- Any 404 from preview or accept shows "Invite link is invalid" (contract-sourced: api-contract.yaml, NotFound response and previewInvite description; ADR-003 Decision, "Link and API"; the brief gives no wording and the contract's status line said Proposed when this was written; it says Accepted by Orchestrator since PR #14).
 
 ## Data touched
 - Invite: token hash and token version (read), organization.
@@ -40,4 +40,4 @@ Showing the link to admins (F3-1), joining rules such as already belonging to an
 - The 400 case (missing, non-string or extra `token` field), the 415 case and the order of checks are criteria of F3-4 (split from this story, which is full at 6 criteria).
 - Criterion 2 needs a test setup that can read the application and proxy logs (ADR-003 "Tests (qa-bot)"); how is up to qa-bot and backend-bot.
 - HTTP codes: 403 and 404 are named in TASK-002; 429 and the other error codes come from the API contract. 401 is ASSUMED in the contract, so it stays ASSUMED here too.
-- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): checked against api-contract.yaml, ADR-003, ADR-002 and data-model.md on main (11497e9a337fdad6d56582077ac3c529d77e3e44, which contains the merges of PR #2 (54f79e4), PR #6 (4a2e084) and PR #7 (11497e9); contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line said Proposed at that commit; since PR #14 the contract, data-model.md and stack.md say Accepted by Orchestrator, and ADR-001 to ADR-004 say Proposed on main a6eaaaf0bd46755874bf587939e2e49a8fb0b73f (the same on 4f08a039b7d89b0ae4f1cac32cf9fbc1408b16cc)). ADR-003's own status line still says Proposed.
+- Contract check (TASK-040 follow-up, re-pointed to main; first written in Attempt 4): checked against api-contract.yaml, ADR-003, ADR-002 and data-model.md on main (11497e9a337fdad6d56582077ac3c529d77e3e44, which contains the merges of PR #2 (54f79e4), PR #6 (4a2e084) and PR #7 (11497e9); contract: docs/project/architecture/api-contract.yaml, ADRs: docs/project/decisions/; the files' own status line said Proposed at that commit; since PR #14 the contract, data-model.md and stack.md say Accepted by Orchestrator, and ADR-001 to ADR-004 say Proposed on main d2e2fdcb4a90250bac374d586379d595e677610a (the same on a6eaaaf0bd46755874bf587939e2e49a8fb0b73f)). ADR-003's own status line still says Proposed.
