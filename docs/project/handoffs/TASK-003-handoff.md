@@ -1,5 +1,5 @@
 # Handoff: TASK-003 Repo layout, .gitignore, .env.example and compose `db` service
-Bot: devops-bot   Attempt: 1   PR: #9 (merged at 6372059), follow-up PR #12 (merged at 8b7b121), hardening PR: PR-NUMBER-PLACEHOLDER   Branch: feature/TASK-003-hardening-db-roles
+Bot: devops-bot   Attempt: 1   PR: #9 (merged at 6372059), follow-up PR #12 (merged at 8b7b121), hardening PR: #19   Branch: feature/TASK-003-hardening-db-roles
 
 Task spec and plan row: `docs/project/plan.md` (row TASK-003, and the "TASK-003" acceptance line). Required reviewers: qa-bot and **security-bot (mandatory second reviewer)**.
 
@@ -24,7 +24,7 @@ What changes: `.env.example` has **no usable default passwords** (both password 
 | 9. (security-bot 3) The app role has no privilege on `alembic_version`; idempotent helper `db/ops/revoke-app-on-alembic-version.sh`, safe when the table is missing | met | outputs under "Criterion 9" below; TASK-006 must call it (Suggested follow-up tasks) |
 | 10. (security-bot 4) No password in psql's argument list or the process list | met | outputs under "Criterion 10" below |
 | 11. (qa-bot 4, security-bot) A failing password-bearing statement does not put the password into `docker compose logs db` | met, residual limits listed | control run versus real script under "Criterion 11" below |
-| Deliverable: PR opened with evidence | met | hardening PR PR-NUMBER-PLACEHOLDER (branch `feature/TASK-003-hardening-db-roles`) carries criteria 7 to 11 and this handoff; PR #9 (`6372059`, merge commit `ec9df3d`) carried criteria 1 to 5 and PR #12 (`8b7b121`, head `78b9752`) criterion 6, both merged before review |
+| Deliverable: PR opened with evidence | met | hardening PR #19 (branch `feature/TASK-003-hardening-db-roles`) carries criteria 7 to 11 and this handoff; PR #9 (`6372059`, merge commit `ec9df3d`) carried criteria 1 to 5 and PR #12 (`8b7b121`, head `78b9752`) criterion 6, both merged before review |
 
 ## Files changed in this PR (vs main `8b7b121`)
 - `.env.example`: empty `POSTGRES_PASSWORD` and `APP_DB_PASSWORD` with generation comments; URL placeholders `REPLACE_WITH_*`; comments on Alembic-only-as-owner and on the port in the URLs
