@@ -1,7 +1,8 @@
 # Team Feedback Board: docker compose (TASK-003: database only).
 # Backend and frontend services are added by TASK-007.
 # No top-level "version:" key (legacy; stack.md note 10).
-# All values come from .env (copy .env.example to .env first).
+# All values come from .env (copy .env.example to .env first and set both passwords:
+# openssl rand -hex 24; they are empty in the template on purpose).
 name: feedback-board
 
 services:
@@ -11,17 +12,19 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env (cp .env.example .env)}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (cp .env.example .env)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (cp .env.example .env, then openssl rand -hex 24)}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env (cp .env.example .env)}
       # Read by db/init/01-roles.sh (restricted application role, ADR-004 section 5).
       APP_DB_USER: ${APP_DB_USER:?Set APP_DB_USER in .env (cp .env.example .env)}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (cp .env.example .env)}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (cp .env.example .env, then openssl rand -hex 24)}
     volumes:
       # PostgreSQL 18+ images keep PGDATA at /var/lib/postgresql/18/docker, so the
       # volume is mounted at /var/lib/postgresql (not at .../data) per the image docs.
       - db_data:/var/lib/postgresql
       # Init scripts run only on a fresh volume (docker compose down -v first).
       - ./db/init:/docker-entrypoint-initdb.d:ro
+      # Manual helpers (not run automatically), e.g. docker compose exec db sh /opt/db-ops/revoke-app-on-alembic-version.sh
+      - ./db/ops:/opt/db-ops:ro
     ports:
       # Loopback only: the database is never exposed on other interfaces.
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
