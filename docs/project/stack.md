@@ -1,6 +1,6 @@
 # Stack: pinned versions (Team Feedback Board)
 
-Status: Proposed (awaiting Orchestrator approval) | Owner: architect-bot | Task: TASK-001
+Status: Accepted by Orchestrator 2026-10-27 (human approval of brief, stack and plan, 8:00 PM CDT) | Owner: architect-bot | Task: TASK-001
 Date checked: **2026-10-27** (America/Chicago). Every version below was fetched live on that date from the source in the last column, not from memory.
 
 The stack itself is **pre-approved** (brief.md, Constraints). Alternatives were not compared. This file only verifies and pins versions.
@@ -76,6 +76,7 @@ Password hashing: **argon2-cffi 25.1.0 (Argon2id)**. Tokens: **PyJWT 2.15.1, HS2
 9. Playwright browsers are installed by `npx playwright install --with-deps` in CI; browser build versions follow the pinned `@playwright/test`.
 10. Do not add the legacy top-level `version:` key to compose files.
 11. **Same-day releases (risk, not blocking).** On 2026-10-27, the day of this check, new releases of pytest (9.2.0; previous 9.1.1 from June), react-router (8.5.1; previous 8.5.0 from 2026-10-19), uv (0.13.6; previous 0.13.5, 2026-10-22) and ruff (0.17.3; previous 0.17.2, 2026-10-22) were published. They are the registry `latest` and are pinned as such; if one of them breaks the scaffold, fall back to the previous release named here and report it to the Orchestrator (no new ADR needed for a one-patch fallback inside the same minor, a new ADR for a different minor).
+12. **Status line (attempt 10).** "Accepted by Orchestrator" covers the pinned versions and the exceptions above. It does not approve R7, A4-4 for the register rows that are not approved, or any rule labelled ASSUMED in this file (ADR-004 section 7).
 
 ## Addendum: tooling and image gaps (verified 2026-10-27)
 Only values fetched live on 2026-10-27 are listed. Anything I could not verify is stated as such.
@@ -118,9 +119,10 @@ Every environment variable defined by the ADRs, the contract and data-model.md i
 
 Removed in attempt 3: `RATE_LIMIT_LOGIN_PER_ACCOUNT` (no per-account limit or lockout: out of scope, not offered, F1-2) and `RATE_LIMIT_INVITE_ACCEPT_PER_USER` (accept is per IP). Cookie name, token lifetimes, the 10-family cap, the leeway of 30 s and the password limits are fixed in the ADRs and are not configurable.
 
-Accepted risks and known limits that touch these settings (rate limits, `RATE_LIMIT_ENABLED`, `REFRESH_REUSE_LEEWAY_SECONDS`, `TRUSTED_PROXY_IPS`, `INVITE_TOKEN_KEY`) are recorded only in ADR-004 section 7 (register R1-R17); there is no second copy here. R7 (the SQL was never run on PostgreSQL) is a gate in three checkpoints, G1 at TASK-006 (migration on `postgres:18.6-alpine` and DDL constraint tests), G2 at TASK-010 (the four advisory-lock tests, each with a one-transaction assertion for the locking re-read and the writes, and the limiter tests for signup, login and refresh; the invite limiter tests are at TASK-017 and the nginx client-address test at TASK-007, ASSUMED assignment) and G3 at TASK-017 (key-rotation tests); it closes when G3 passes.
+Accepted risks and known limits that touch these settings (rate limits, `RATE_LIMIT_ENABLED`, `REFRESH_REUSE_LEEWAY_SECONDS`, `TRUSTED_PROXY_IPS`, `INVITE_TOKEN_KEY`) are recorded only in ADR-004 section 7 (register R1-R17); there is no second copy here. R7 (the SQL was never run on PostgreSQL) is a gate in three checkpoints, G1 at TASK-006 (migration on `postgres:18.6-alpine` and DDL constraint tests), G2 at TASK-010 (the four advisory-lock tests, each with a one-transaction assertion for the locking re-read and the writes, and the limiter tests for signup, login and refresh; the invite limiter tests are at TASK-017 and the nginx client-address test at TASK-007; the assertion that no request lands in the `<group>:unknown` bucket belongs only to the TASK-014 e2e job, with TASK-010 (the limiter) as its prerequisite, and is in no other task's list; ASSUMED assignment) and G3 at TASK-017 (key-rotation tests); it closes when G3 passes.
 
 ## Change log
 - 2026-10-27: initial pinned set (TASK-001, architect-bot).
 - 2026-10-27: attempt 2: Node 24 wording corrected (Maintenance LTS), TypeScript 6.0.3 confirmed, same-day-release risk note, addendum for uv, Docker images, ruff, mypy, TanStack Query, Vitest, generator.
 - 2026-10-27: attempt 3: one environment-variable table (defaults, readers, production-required), rate-limit variables renamed to the 10/60 per IP rule.
+- 2026-10-27: attempt 10: status line set to accepted by the Orchestrator (note 12); no version or variable changed.
