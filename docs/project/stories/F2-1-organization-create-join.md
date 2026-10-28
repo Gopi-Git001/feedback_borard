@@ -17,7 +17,7 @@ As a new user, I want to create an organization (and become its admin) or join o
 
 ## UI notes
 - A logged-in user with no organization sees two choices: "Create organization" (name field) or "Join with invite link" (ASSUMED labels).
-- Opening an invite link while logged out sends me to sign up / log in first, and then applies the invite (ASSUMED; see handoff Open questions).
+- Opening an invite link while logged out sends me to sign up (email, password and display name, see F1-1) or log in first, and then applies the invite (ASSUMED; see handoff Open questions).
 
 ## Data touched
 - Organization: name, created time.

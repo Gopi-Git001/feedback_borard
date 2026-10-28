@@ -1,6 +1,8 @@
 # Handoff: TASK-002 User stories with testable acceptance criteria for F1-F9
 Bot: ba-bot   Attempt: 2   PR: https://github.com/Gopi-Git001/feedback_borard/pull/1   Branch: feature/TASK-002-user-stories
 
+Review history: the Attempt 2 fixes (qa-bot review of PR #1, comment 6457628659) were merged via PR #3: https://github.com/Gopi-Git001/feedback_borard/pull/3
+
 Open questions: see the "Open questions" section below. 10 items: 1 resolved (Q2); 9 are ASSUMED items that need an answer or confirmation (Q1 is the gate: brief approval).
 
 ## Summary

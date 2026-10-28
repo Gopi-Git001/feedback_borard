@@ -3,7 +3,7 @@ Status: READY
 As a member, I want to comment on a post, so that I can discuss the feedback with my team.
 
 ## Acceptance criteria
-1. Given I am a member of "Acme" viewing post P, When I submit the comment "Same here, please prioritise." (29 characters), Then the comment is saved with me as author and the current time, and it appears under P.
+1. Given I am a member of "Acme" viewing post P, When I submit the comment "Same here, please prioritise." (29 characters), Then the comment is saved with me as author (shown by my display name, for example "Bob") and the current time, and it appears under P.
 2. Given I am viewing post P, When I submit a comment that is empty, only spaces, or longer than 1000 characters, Then it is rejected with a field-level error and no comment is created.
 3. Given post P has 3 comments created at 10:00, 10:05 and 10:10, When I open P, Then the comments are listed oldest first (10:00, 10:05, 10:10); and given a post with 0 comments, Then I see "No comments yet" (ASSUMED text).
 4. Given post P belongs to organization "Beta", When a member of "Acme" tries to read or add comments on P, Then the response is 404 and no comment data from "Beta" is returned or created.
@@ -15,13 +15,14 @@ As a member, I want to comment on a post, so that I can discuss the feedback wit
 - Comments are listed oldest first (ASSUMED).
 - No one can edit or delete comments in the MVP (ASSUMED). The brief only says members cannot edit or delete posts and lists comment editing nowhere in the MVP; deleting a post (F9) removes its comments.
 - A comment belongs to one post and so to that post's organization.
+- A comment names its author by display name only; the email is never shown to other members (API contract).
 
 ## UI notes
 - Comment list under the post, then a text box and "Add comment" button (ASSUMED label).
-- Each comment shows author, time and text.
+- Each comment shows the author's display name (not email), time and text.
 
 ## Data touched
-- Comment: post, author, text, created time.
+- Comment: post, author (shown by display name), text, created time.
 
 ## Out of scope
 Editing or deleting comments, replies/threads, mentions, notifications, markdown or attachments.
@@ -32,3 +33,4 @@ Editing or deleting comments, replies/threads, mentions, notifications, markdown
 - Brief status was DRAFT (fast-track) when this was written; READY status is conditional on brief approval (see handoff Open questions #1).
 - ASSUMED (all stories): an admin has every member ability (post, vote, comment, view board). Authenticated user = valid login token; a missing/invalid token gives 401.
 - API contract (TASK-001) did not exist yet. The TASK-002 spec names 403 (member on admin action) and 404 (cross-organization access); stories use no other HTTP code. ASSUMED: 401 for a missing or invalid login token (standard meaning; named in neither TASK-002 nor the brief). Recheck all codes against the contract when it lands.
+- Contract check (TASK-039): api-contract.yaml (branch feature/TASK-001-stack-and-contracts, not yet on main) now exists. Comment author is exposed as display name only (no email); comment limit 1-1000 matches. Recheck once it is merged to main.
