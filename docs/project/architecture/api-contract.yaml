@@ -55,7 +55,7 @@ info:
       quota; accepted risk R10, ADR-004), then the CSRF guard (`X-Requested-With` and `Origin`, 403), then the cookie logic.
       `/auth/logout` has no rate limit: CSRF guard, then the logout logic.
     - **Content-Type and `Vary` (ADR-004, security-bot N13):** a request with a body must send `Content-Type: application/json`, otherwise
-      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413). It is checked after the rate limiter and before authentication.
+      the answer is 415 with the standard error body (`VALIDATION_ERROR`) and nothing changes (not listed per operation, like nginx's 413). It is checked after the rate limiter and before authentication. Only the media type is compared: the part before the first semicolon, trimmed, case-insensitive; parameters are ignored, so `application/json; charset=utf-8` is accepted, while `application/jsonx`, `text/json`, `application/json-patch+json` and `application/vnd.api+json` are 415 (ASSUMED).
       The responses of `/auth/refresh` and `/auth/logout` send `Vary: Origin`.
     - **Security headers and caching (ADR-004):** **every response under `/api/v1/*`**, errors included, sends
       `Cache-Control: no-store` (the `NoStore` header is also declared explicitly on token-bearing responses); every API response also sends
