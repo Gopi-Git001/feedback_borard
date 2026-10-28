@@ -126,7 +126,7 @@ TASK-033 waits for every feature slice, backend and frontend. TASK-035 (security
 | D Verification and docs | qa-bot, security-bot, docs-bot | qa-bot reviews each PR; docs-bot 015; then 035, 036 in parallel, then 037, 038 | per task blockers |
 
 Parallel windows:
-- TASK-004 and TASK-005 start from main without waiting for TASK-003 to be DONE, and they run in parallel. Docs-only follow-up PRs do not block build tasks. TASK-003's DB roles are on main in merged PR #12 (8b7b121); that merge is a separate gate for TASK-006 onward. qa-bot's post-merge review of PR #12 is CHANGES_REQUESTED, and devops-bot's security fixes are a new PR.
+- TASK-004 and TASK-005 start from main without waiting for TASK-003 to be DONE, and they run in parallel. Docs-only follow-up PRs do not block build tasks. TASK-003's DB roles are on main in merged PR #12 (8b7b121); that merge is a separate gate for TASK-006 onward. qa-bot's post-merge review of PR #12 is CHANGES_REQUESTED, and hardening PR #19 is open (head 82650c1, in review).
 - After TASK-004/005/006: TASK-007, TASK-008 and TASK-009 run in parallel (devops, devops, backend).
 - After TASK-012: frontend 024 onward runs independently of the backend lane. After TASK-011: backend 016 and 018 can start; 019 to 023 only need 018.
 - Frontend tasks 027 to 032 depend on the shell and contract, not on the finished backend; they are tested with mocked API responses taken from the contract, and the real integration is proven by the E2E tasks (033, 034). Each backend task must also test its responses against the shapes in `api-contract.yaml`, so contract drift is caught early.
