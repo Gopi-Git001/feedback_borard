@@ -23,7 +23,7 @@ info:
     - **Order of checks:** authentication (401), then resource lookup scoped to the caller's organization
       (404, including "exists in another organization"), then role (403). A member who targets an admin-only
       operation on a post of another organization gets 404, not 403, so existence is never revealed.
-    - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). The same applies to `display_name` at signup: **trim leading and trailing whitespace first, then validate the length (1-80)**; the trimmed value is stored. `email` is compared case-insensitively.
+    - **Trimming:** the server trims leading/trailing whitespace of `title`, `description`, `body`, `name` before checking the length limits, so spaces-only values fail with 400 (stories F2-1, F4-1, F6-1). The same applies to `display_name` at signup: **trim leading and trailing whitespace first, then validate the length (1-80)**; the trimmed value is stored. `email` is compared case-insensitively. **The `minLength`/`maxLength` values in the schemas below describe the trimmed value**: the server validates lengths after trimming, so a client or generated validator must not reject the raw input on those keywords alone (for example `"  Ana  "` is valid).
     - **Error body** for every non-2xx: `{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`.
     - **No pagination in the MVP** (stories F7-1 and F6-1: all matching posts / comments are returned in one
       response). Lists are wrapped as `{ "items": [...] }` so that `next_cursor` can be added later without
@@ -33,9 +33,15 @@ info:
       server-side as a hash, rotated on every use, reuse-detected and revocable** (ADR-002, `refresh_tokens`
       table): each login/signup starts a new token *family* with an **absolute 7-day cap from login**; rotation
       never extends past `login time + 7 days`; reuse of a rotated or revoked token revokes the whole family;
-      logout revokes the family. After the 7 days the user must log in again.
+      logout revokes the family (rotation, logout, reuse revoke and eviction are serialised per family, ADR-002, so
+      a logout that answers 204 leaves no live token). After the 7 days the user must log in again.
+      **At most 10 active sessions (families) per user** (ASSUMED, an architect addition): when an 11th is
+      created by signup or login, the session with the oldest login time is revoked (`evicted`) and its next
+      `POST /auth/refresh` answers 401, so the SPA shows the login form.
       Token verification (ADR-002): `jwt.decode(..., algorithms=["HS256"], issuer="feedback-board",
-      audience="feedback-board-api", leeway=30, options={"require": ["exp", "iat", "sub", "iss", "aud", "typ", "jti"]})`,
+      audience="feedback-board-api", leeway=30, options={"require": ["exp", "iat", "sub", "iss", "aud", "typ", "jti"]})`
+      (`leeway=30` covers only the JWT time claims, so an access token is accepted for up to 15 min 30 s; database
+      expiry, the 7-day cap and the reuse leeway are exact),
       then `typ` must equal `access` on every API endpoint (a refresh token is never accepted as a bearer token)
       and `refresh` only for the cookie on `/auth/refresh` and `/auth/logout`. `org` is **not** in the required list
       because it is absent until the user creates or joins an organization; every organization endpoint checks
@@ -43,9 +49,10 @@ info:
       (otherwise 401). The `jti` of a refresh token is its server-side identifier; the `jti` of an access token is unused.
     - **CSRF guard on cookie endpoints** (`/auth/refresh`, `/auth/logout`): the request must carry the header
       `X-Requested-With: feedback-board` and, when an `Origin` header is present, it must equal the configured
-      frontend origin; otherwise 403 `FORBIDDEN` and nothing changes. This is in addition to `SameSite=Strict`.
-    - **Security headers and caching (ADR-004):** responses of `/auth/*`, `/organizations*` and `/invites/*`
-      (they carry tokens or tenant data) send `Cache-Control: no-store`; every API response also sends
+      frontend origin (exact match; **`Origin: null` is not equal and gets 403**); otherwise 403 `FORBIDDEN` and nothing
+      changes. This is in addition to `SameSite=Strict`.
+    - **Security headers and caching (ADR-004):** **every response under `/api/v1/*`**, errors included, sends
+      `Cache-Control: no-store` (the `NoStore` header is also declared explicitly on token-bearing responses); every API response also sends
       `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP.
     - **Logging:** request bodies of `/auth/*` and `/invites/*`, and the `Authorization`, `Cookie` and
       `Set-Cookie` headers, are never logged; 400 `details` never echo submitted values (field and rule only).
@@ -56,14 +63,20 @@ info:
       query string**. The shareable link is `<frontend-origin>/join#<token>` (URL fragment, never sent to a
       server); the SPA sends the token in a POST body to `POST /invites/preview` and `POST /invites/accept`.
       Invite responses are `Cache-Control: no-store`. A malformed token (wrong length or characters) is answered
-      with 404 `INVITE_NOT_FOUND`, the same as an unknown token, never 400.
+      with 404 `INVITE_NOT_FOUND`, the same as an unknown token, never 400. The same 404 is answered for a token
+      that was valid under an earlier `INVITE_TOKEN_KEY` (key rotation). **Key rotation:** `POST /organizations/current/invite`
+      re-derives the token with the current key and, when its SHA-256 differs from the stored hash, stores the new
+      hash first, so the link it returns is the one that works and links of the old key stop working (ADR-003).
     - **Extras beyond the stories/brief:** `POST /auth/refresh` and `POST /auth/logout` go beyond story F1-1
       (F1-1 lists logout and session expiry as out of scope). They are approved per Orchestrator message 2026-10-27, relayed from the human, so they are not ASSUMED
       any more, but they are not mapped to a story either (`x-features: []`, `x-extra: true`).
       `display_name` is required at signup: approved per Orchestrator message 2026-10-27, relayed from the human; ba-bot will update the stories to match.
       Rate limiting (429) is approved per Orchestrator message 2026-10-27, relayed from the human, for signup, login, refresh and invite preview/accept (**not** for logout);
-      the thresholds are ASSUMED and configurable by environment variables (ADR-002). `POST /organizations` also
-      has a per-user limit (429), added after the security review (finding 5); drop it if it is out of scope.
+      the threshold is ASSUMED in the brief and the stories at **10 requests per rolling 60 seconds per client IP per
+      endpoint** (counted whether or not the request succeeds) and is configurable by environment variables (ADR-002).
+      There is no per-account login limit and no account lockout (out of scope per story F1-2).
+      `POST /organizations` also has a per-user limit (429, default 10 per 60 s), an architect addition from the
+      security review (finding 5) accepted by the Orchestrator; drop it if it is out of scope.
 servers:
   - url: /api/v1
     description: Relative to the site origin. In docker compose the frontend proxies /api to the backend (http://localhost:8000 when called directly).
@@ -88,7 +101,7 @@ paths:
       tags: [Auth]
       operationId: signup
       summary: Sign up with email and password
-      description: Creates a user with no organization. Returns an access token (no `org` claim yet) and sets the refresh cookie (starts a new refresh-token family). Rate limited per IP (429, approved; thresholds ASSUMED). `409 EMAIL_TAKEN` is required by story F1-1 and is an account-enumeration oracle; the rate limit is the mitigation (ADR-004).
+      description: Creates a user with no organization. Returns an access token (no `org` claim yet) and sets the refresh cookie (starts a new refresh-token family). Rate limited per IP (429, approved, default 10 requests per 60 seconds, ASSUMED). If the user already has 10 active sessions the oldest is revoked (see conventions). `409 EMAIL_TAKEN` is required by story F1-1 and is an account-enumeration oracle; the rate limit is the mitigation (ADR-004).
       x-features: [F1]
       x-roles: [public]
       security: []
@@ -120,7 +133,7 @@ paths:
       tags: [Auth]
       operationId: login
       summary: Log in with email and password
-      description: Always answers `INVALID_CREDENTIALS` (401, message exactly `Invalid email or password`) for a wrong password or unknown email. Sets the refresh cookie. The access token carries `org` if the user belongs to an organization.
+      description: Always answers `INVALID_CREDENTIALS` (401, message exactly `Invalid email or password`) for a wrong password or unknown email. Sets the refresh cookie and starts a new refresh-token family (the oldest of 10 active sessions is revoked, ASSUMED). Rate limited per IP only (429, approved, default 10 requests per 60 seconds, ASSUMED); there is no per-account limit or lockout. The access token carries `org` if the user belongs to an organization.
       x-features: [F1]
       x-roles: [public]
       security: []
@@ -156,16 +169,16 @@ paths:
         **EXTRA, beyond story F1-1** (F1-1 puts session expiry out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
         Reads the `refresh_token` cookie (no request body) and, in one database transaction:
         1. verifies the JWT (`typ=refresh`) and finds the stored hash of its `jti` in `refresh_tokens`;
-        2. **reuse detection:** if that token was already rotated or revoked, the **whole token family is revoked**
+        2. rejects (401) a token that is expired or whose family is past the **absolute cap of 7 days from login** (checked first, exactly, no clock leeway);
+        3. **reuse detection:** if that token was already rotated or revoked, the **whole token family is revoked**
            and the answer is 401 (within `REFRESH_REUSE_LEEWAY_SECONDS`, default 10, of the rotation it answers 401
            without revoking the family, to tolerate two tabs racing; the SPA also takes a cross-tab lock so
            normally only one refresh runs);
-        3. rejects (401) a token that is expired or whose family is past the **absolute cap of 7 days from login**;
         4. otherwise issues a new refresh token in the same family (expiry = login time + 7 days, never later),
            marks the old one as rotated, and returns a new access token whose `org` claim is re-read from the
            database (membership), not copied from the old token.
         401 if the cookie is missing, invalid, expired, revoked or reused (the cookie is cleared).
-        Requires the CSRF guard header (see conventions). Rate limited (429, approved; thresholds ASSUMED).
+        401 is also answered when the session was evicted by the 10-session cap. Requires the CSRF guard header (see conventions). Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED); the limit is checked before the guard.
       x-extra: true
       x-features: []
       x-roles: [public]
@@ -199,7 +212,7 @@ paths:
         **EXTRA, beyond story F1-1** (F1-1 puts logout out of scope); approved per Orchestrator message 2026-10-27, relayed from the human.
         If the cookie holds a known refresh token, the **whole token family is revoked on the server**
         (`revoked_reason = logout`), so a stolen copy of that cookie stops working; the cookie is then cleared.
-        Idempotent: without a cookie, or with an unknown or already revoked one, it still answers 204.
+        Idempotent: without a cookie, or with an unknown or already revoked one, it still answers 204. It is serialised with a concurrent refresh of the same family, so after a 204 no token of the family is live.
         An access token that was already issued stays valid until it expires (max 15 minutes), see ADR-002.
         Requires the CSRF guard header (see conventions). Not rate limited: the approved rate-limit scope is
         signup, login, refresh and invite preview/accept.
@@ -245,7 +258,7 @@ paths:
       description: |
         Allowed only for a user without an organization (one organization per user in the MVP);
         otherwise 409 `ALREADY_IN_ORGANIZATION`. The response contains a **new access token that
-        includes the `org` claim**; the refresh cookie is not rotated (the `org` claim is re-read from the database on every refresh). The client must replace its access token. Per-user rate limit (429, ASSUMED thresholds).
+        includes the `org` claim**; the refresh cookie is not rotated (the `org` claim is re-read from the database on every refresh). The client must replace its access token. Per-user rate limit (429, architect addition, default 10 per 60 s, ASSUMED).
       x-features: [F2]
       x-roles: [no-organization]
       requestBody:
@@ -307,7 +320,7 @@ paths:
         organization returns the **same** token, and never creates a second one. The token is long
         and unpredictable (32 bytes, URL-safe base64, 43 characters) and valid for exactly one organization.
         Revocation and regeneration are not in the MVP. The frontend builds the link as `<frontend-origin>/join#<token>` (fragment, ADR-003).
-        The token is derived server-side (HMAC of the organization id and a token version with a server key) and only its SHA-256 hash is stored, so it can be shown again without keeping it in clear (ADR-003).
+        The token is derived server-side (HMAC of the organization id and a token version with a server key) and only its SHA-256 hash is stored, so it can be shown again without keeping it in clear (ADR-003). If the server key was rotated, the call stores the new hash and returns the new token, and links of the old key stop working (the old token gives 404 INVITE_NOT_FOUND).
         Members get 403 and no token is created; no token gives 401.
       x-features: [F3]
       x-roles: [admin]
@@ -320,7 +333,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invite' }
               example:
-                token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw
+                token: PNqzMLttQPIF8nHKGWLPGIMzyUHw8lLpXulro9uECFo
                 created_at: '2026-10-27T18:35:00Z'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -334,7 +347,7 @@ paths:
         The token is sent in the **request body**, never in the path or query (ADR-003). Returns only the
         organization name. An unknown or malformed token returns 404 `INVITE_NOT_FOUND` (message
         `Invite link is invalid`), never 400. No side effects (POST only to keep the token out of the URL).
-        Rate limited (429, approved; thresholds ASSUMED). `Cache-Control: no-store`.
+        Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED), counted for any token valid or not. `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [public]
       security: []
@@ -343,7 +356,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/InviteTokenRequest' }
-            example: { token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw }
+            example: { token: PNqzMLttQPIF8nHKGWLPGIMzyUHw8lLpXulro9uECFo }
       responses:
         '200':
           description: Invite is valid.
@@ -365,7 +378,7 @@ paths:
         path or query (ADR-003). Creates a `member` membership. The invite is not consumed. Returns a **new access
         token with the `org` claim**; the refresh cookie is not rotated. 409 `ALREADY_IN_ORGANIZATION` if the user
         already belongs to an organization; 404 `INVITE_NOT_FOUND` for an unknown or malformed token.
-        Per-user rate limit (429, approved; thresholds ASSUMED). `Cache-Control: no-store`.
+        Rate limited per IP (429, approved, default 10 per 60 s, ASSUMED), checked before authentication, so every attempt counts. `Cache-Control: no-store`.
       x-features: [F2, F3]
       x-roles: [no-organization]
       requestBody:
@@ -373,7 +386,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/InviteTokenRequest' }
-            example: { token: Qm9ndXNUb2tlbkZvckRvY3NPbmx5X0xvbmdSYW5kb21WYWx1ZV8xMjM0NTY3ODkw }
+            example: { token: PNqzMLttQPIF8nHKGWLPGIMzyUHw8lLpXulro9uECFo }
       responses:
         '200':
           description: Joined the organization.
@@ -724,11 +737,11 @@ components:
           example:
             error: { code: EMAIL_TAKEN, message: Email already registered, details: [] }
     RateLimited:
-      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied to signup, login (per IP and per account), refresh and invite preview (per IP), invite accept and organization create (per user); **not** to logout. Thresholds ASSUMED and configurable by environment variables (ADR-002).'
+      description: '429 Too many requests (`RATE_LIMITED`). Rate limiting is approved per Orchestrator message 2026-10-27, relayed from the human. Applied per client IP (default 10 requests per rolling 60 seconds per endpoint, ASSUMED in the brief and stories F1-2 and F3-1) to signup, login, refresh, invite preview and invite accept, and per user (default 10 per 60 s) to organization create; **not** to logout, and there is no per-account login limit. Configurable by environment variables (ADR-002).'
       headers:
         Retry-After:
-          schema: { type: integer }
-          description: Seconds to wait.
+          schema: { type: integer, minimum: 1 }
+          description: Whole seconds to wait, at least 1.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -871,7 +884,7 @@ components:
       required: [token]
       additionalProperties: false
       properties:
-        token: { type: string, maxLength: 512, description: 'The invite token from the URL fragment. Secret: never log it. Any value that is not a valid token gives 404, not 400.' }
+        token: { type: string, description: 'The invite token from the URL fragment (43 characters when valid). Secret: never log it. No length limit is declared on purpose: any string that is not a valid current token, of any length, gives 404 INVITE_NOT_FOUND, never 400 (only a missing or non-string token field gives 400; a body over the nginx limit gives 413 from nginx, ADR-004 section 7).' }
     InvitePreview:
       type: object
       required: [organization_name]
