@@ -1,5 +1,5 @@
 # Handoff: TASK-005 Frontend skeleton
-Bot: frontend-bot   Attempt: 1   PR: recorded after the pull request is opened (this attempt)   Branch: feature/TASK-005-frontend-skeleton (from 11497e9)
+Bot: frontend-bot   Attempt: 1   PR: https://github.com/Gopi-Git001/feedback_borard/pull/20   Branch: feature/TASK-005-frontend-skeleton (from 11497e9)
 
 Task spec file `docs/project/tasks/TASK-005.md` is not in the repo. The acceptance line is `docs/project/plan.md` (TASK-005, M0). Required reviewer: qa-bot.
 
