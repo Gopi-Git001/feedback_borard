@@ -69,16 +69,24 @@ def secret_values(settings: Settings) -> tuple[str, ...]:
     return tuple(unique)
 
 
-def configure_logging(settings: Settings) -> None:
-    logger = logging.getLogger("feedback_board")
-    logger.handlers.clear()
-    logger.filters.clear()
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+# uvicorn.error and uvicorn.access are children of uvicorn. A logger filter on
+# the parent is not applied to records that propagate from a child, so the
+# redaction filter lives on the shared handler instead.
+_LOGGER_NAMES = ("feedback_board", "uvicorn", "uvicorn.error", "uvicorn.access")
+
+
+def configure_logging(settings: Settings) -> logging.Handler:
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
-    logger.addHandler(handler)
-    logger.addFilter(SecretRedactionFilter(secret_values(settings)))
+    handler.addFilter(SecretRedactionFilter(secret_values(settings)))
+    for name in _LOGGER_NAMES:
+        logger = logging.getLogger(name)
+        logger.handlers.clear()
+        logger.filters.clear()
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+        logger.addHandler(handler)
+    return handler
 
 
 def get_logger(name: str) -> logging.Logger:

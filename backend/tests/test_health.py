@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -52,4 +54,6 @@ def test_health_access_log_has_no_secret(
     assert isinstance(payload["duration_ms"], float)
     assert payload["request_id"] == "req-health-2"
     assert JWT_SECRET not in rendered
-    assert "change-me-owner-password" not in rendered
+    password = urlsplit(os.environ["DATABASE_URL"]).password
+    assert password
+    assert password not in rendered
